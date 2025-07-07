@@ -82,6 +82,8 @@ model User {
   roles                Role[]
   role_users           RoleUser[]
   payment_transactions PaymentTransaction[]
+  employee             Employee?
+  admin                Admin?
 
   @@map("users")
 }
@@ -419,18 +421,253 @@ model UserSetting {
   @@map("user_settings")
 }
 
-// this table stores example
-// model Note {
-//   id                String  @id @default(cuid())
-//   created_at DateTime  @default(now())
-//   updated_at DateTime  @default(now())
-//   deleted_at DateTime?
-//   status     Int?      @default(1) @db.SmallInt
+// ========== PROJECT MANAGEMENT MODELS ==========
 
-//   title String?
-//   body  String? @db.Text
+model Admin {
+  id         String   @id @default(cuid())
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
 
-//   tenant_id Int?
-//   tenant    Organization? @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-//   @@map("posts")
-// }
+  user_id String @unique
+  user    User   @relation(fields: [user_id], references: [id])
+
+  // Add any admin-specific fields here
+  department String? @db.VarChar(100)
+  phone      String? @db.VarChar(20)
+  avatar     String? // profile photo
+
+  @@map("admins")
+}
+
+// Employee model for project management
+model Employee {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+  status     Int?      @default(1) @db.SmallInt
+
+  first_name      String  @db.VarChar(100)
+  last_name       String  @db.VarChar(100)
+  email           String  @unique @db.VarChar(255)
+  password        String  @db.VarChar(255)
+  phone           String? @db.VarChar(20)
+  physical_number String? @db.VarChar(20)
+  role            String  @db.VarChar(100)
+  hourly_rate     Decimal @default(0)
+  address         String? @db.VarChar(500)
+  avatar          String? // photo URL or file path
+
+  recorded_hours Int     @default(0)
+  earning        Decimal @default(0)
+
+  user_id         String?           @unique
+  user            User?             @relation(fields: [user_id], references: [id])
+  employeeHoliday EmployeeHoliday[]
+  project         Project[]
+  attendance      Attendance[]
+  projectAssignee ProjectAssignee[]
+  employeeLoan    EmployeeLoan[]
+
+  @@map("employees")
+}
+
+model EmployeeHoliday {
+  id          String   @id @default(cuid())
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now())
+  employee_id String
+  employee    Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  start_date  DateTime
+  end_date    DateTime
+
+  @@map("employee_holidays")
+}
+
+// Project model
+model Project {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+  status     Int?      @default(1) @db.SmallInt
+
+  name       String           @db.VarChar(255)
+  start_date DateTime?
+  end_date   DateTime?
+  budget     Decimal?
+  cost       Decimal?
+  address    String           @db.VarChar(255)
+  priority   ProjectPriority? @default(MEDIUM)
+  employeeId String?
+
+  // Many-to-many with Employee
+  assignees ProjectAssignee[]
+  employee  Employee?         @relation(fields: [employeeId], references: [id])
+
+  @@map("projects")
+}
+
+model ProjectAssignee {
+  id         String @id @default(cuid())
+  projectId  String
+  employeeId String
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, employeeId])
+  @@map("project_assignees")
+}
+
+// Attendance model
+model Attendance {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+  status     Int?      @default(1) @db.SmallInt
+
+  employee_id String
+  employee    Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+
+  date              DateTime          @db.Date
+  start_time        DateTime?
+  lunch_start       DateTime?
+  lunch_end         DateTime?
+  end_time          DateTime?
+  hours             Decimal           @default(0) // Number of hours worked that day
+  attendance_status AttendanceStatus? @default(PRESENT)
+  notes             String?           @db.Text
+
+  @@map("attendances")
+}
+
+// Academic Calendar model
+model AcademicCalendar {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+  status     Int?      @default(1) @db.SmallInt
+
+  title       String?            @db.VarChar(255)
+  description String?            @db.Text
+  event_type  CalendarEventType?
+
+  start_date DateTime?
+  end_date   DateTime?
+  all_day    Boolean?  @default(false)
+
+  location  String? @db.VarChar(255)
+  organizer String? @db.VarChar(255)
+  color     String? @db.VarChar(7) // Hex color code
+
+  @@map("academic_calendars")
+}
+
+// Employee Loan model
+model EmployeeLoan {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+  status     Int?      @default(1) @db.SmallInt
+
+  employee_id String
+  employee    Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+
+  loan_amount  Decimal
+  loan_purpose String?     @db.VarChar(255)
+  loan_status  LoanStatus? @default(PENDING)
+
+  approved_date  DateTime?
+  disbursed_date DateTime?
+
+  interest_rate   Decimal? @default(0)
+  monthly_payment Decimal?
+  total_payable   Decimal?
+
+  start_date DateTime?
+  end_date   DateTime?
+
+  notes         String?       @db.Text
+  loan_payments LoanPayment[]
+
+  @@map("employee_loans")
+}
+
+// Loan Payment model
+model LoanPayment {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+  status     Int?      @default(1) @db.SmallInt
+
+  loan_id String
+  loan    EmployeeLoan @relation(fields: [loan_id], references: [id], onDelete: Cascade)
+
+  payment_amount Decimal
+  payment_date   DateTime
+  payment_method String?  @db.VarChar(50)
+
+  notes String? @db.Text
+
+  @@map("loan_payments")
+}
+
+//----------Enum-----------//
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+  ON_LEAVE
+}
+
+enum EmployeeType {
+  FULL_TIME
+  PART_TIME
+  CONTRACTOR
+  INTERN
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  WORK_FROM_HOME
+}
+
+enum LoanStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ACTIVE
+  PAID
+  DEFAULTED
+}
+
+enum CalendarEventType {
+  HOLIDAY
+  MEETING
+  DEADLINE
+  TRAINING
+  EVENT
+}
