@@ -50,23 +50,29 @@ model User {
   domain     String? @unique
   avatar     String?
 
-  phone_number  String?
-  country       String?
-  state         String?
-  city          String?
-  address       String?
-  zip_code      String?
-  gender        String?
-  date_of_birth DateTime? @db.Date
+  physical_number String?   @db.VarChar(20)
+  phone_number    String?
+  country         String?
+  state           String?
+  city            String?
+  address         String?
+  zip_code        String?
+  gender          String?
+  date_of_birth   DateTime? @db.Date
 
   // billing id. e.g. stripe customer id
   billing_id String?
 
-  type              String?   @default("user")
-  email_verified_at DateTime?
-
-  is_two_factor_enabled Int?    @default(0)
+  type                  String?   @default("employee")
+  employee_role         String?
+  email_verified_at     DateTime?
+  is_two_factor_enabled Int?      @default(0)
   two_factor_secret     String? // secret key for two factor authentication
+
+  // Add these fields:
+  hourly_rate    Decimal? @default(0)
+  recorded_hours Int?     @default(0)
+  earning        Decimal? @default(0)
 
   accounts                  Account[]
   creator_conversations     Conversation[] @relation("creator")
@@ -82,8 +88,14 @@ model User {
   roles                Role[]
   role_users           RoleUser[]
   payment_transactions PaymentTransaction[]
-  employee             Employee?
-  admin                Admin?
+
+  // Project Management
+  employeeHoliday      EmployeeHoliday[]
+  project              Project[]
+  attendance           Attendance[]
+  projectAssignee      ProjectAssignee[]
+  employeeLoan         EmployeeLoan[]
+  admin_approved_loans EmployeeLoan[]    @relation("LoanApprover")
 
   @@map("users")
 }
@@ -423,63 +435,14 @@ model UserSetting {
 
 // ========== PROJECT MANAGEMENT MODELS ==========
 
-model Admin {
+model EmployeeHoliday {
   id         String   @id @default(cuid())
   created_at DateTime @default(now())
   updated_at DateTime @default(now())
-
-  user_id String @unique
-  user    User   @relation(fields: [user_id], references: [id])
-
-  // Add any admin-specific fields here
-  department String? @db.VarChar(100)
-  phone      String? @db.VarChar(20)
-  avatar     String? // profile photo
-
-  @@map("admins")
-}
-
-// Employee model for project management
-model Employee {
-  id         String    @id @default(cuid())
-  created_at DateTime  @default(now())
-  updated_at DateTime  @default(now())
-  deleted_at DateTime?
-  status     Int?      @default(1) @db.SmallInt
-
-  first_name      String  @db.VarChar(100)
-  last_name       String  @db.VarChar(100)
-  email           String  @unique @db.VarChar(255)
-  password        String  @db.VarChar(255)
-  phone           String? @db.VarChar(20)
-  physical_number String? @db.VarChar(20)
-  role            String  @db.VarChar(100)
-  hourly_rate     Decimal @default(0)
-  address         String? @db.VarChar(500)
-  avatar          String? // photo URL or file path
-
-  recorded_hours Int     @default(0)
-  earning        Decimal @default(0)
-
-  user_id         String?           @unique
-  user            User?             @relation(fields: [user_id], references: [id])
-  employeeHoliday EmployeeHoliday[]
-  project         Project[]
-  attendance      Attendance[]
-  projectAssignee ProjectAssignee[]
-  employeeLoan    EmployeeLoan[]
-
-  @@map("employees")
-}
-
-model EmployeeHoliday {
-  id          String   @id @default(cuid())
-  created_at  DateTime @default(now())
-  updated_at  DateTime @default(now())
-  employee_id String
-  employee    Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
-  start_date  DateTime
-  end_date    DateTime
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  start_date DateTime
+  end_date   DateTime
 
   @@map("employee_holidays")
 }
@@ -499,24 +462,24 @@ model Project {
   cost       Decimal?
   address    String           @db.VarChar(255)
   priority   ProjectPriority? @default(MEDIUM)
-  employeeId String?
+  userId     String?
 
-  // Many-to-many with Employee
+  // Many-to-many with User
   assignees ProjectAssignee[]
-  employee  Employee?         @relation(fields: [employeeId], references: [id])
+  user      User?             @relation(fields: [userId], references: [id])
 
   @@map("projects")
 }
 
 model ProjectAssignee {
-  id         String @id @default(cuid())
-  projectId  String
-  employeeId String
+  id        String @id @default(cuid())
+  projectId String
+  userId    String
 
-  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([projectId, employeeId])
+  @@unique([projectId, userId])
   @@map("project_assignees")
 }
 
@@ -528,8 +491,8 @@ model Attendance {
   deleted_at DateTime?
   status     Int?      @default(1) @db.SmallInt
 
-  employee_id String
-  employee    Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   date              DateTime          @db.Date
   start_time        DateTime?
@@ -574,12 +537,15 @@ model EmployeeLoan {
   deleted_at DateTime?
   status     Int?      @default(1) @db.SmallInt
 
-  employee_id String
-  employee    Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   loan_amount  Decimal
   loan_purpose String?     @db.VarChar(255)
   loan_status  LoanStatus? @default(PENDING)
+
+  approved_by_id String?
+  approved_by    User?   @relation("LoanApprover", fields: [approved_by_id], references: [id])
 
   approved_date  DateTime?
   disbursed_date DateTime?
