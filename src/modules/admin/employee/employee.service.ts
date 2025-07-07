@@ -130,6 +130,7 @@ export class EmployeeService {
           first_name: true,
           last_name: true,
           name: true,
+          email: true,
           avatar: true,
           employee_role: true,
           hourly_rate: true,
@@ -187,6 +188,7 @@ export class EmployeeService {
           first_name: true,
           last_name: true,
           name: true,
+          email: true,
           avatar: true,
           employee_role: true,
           hourly_rate: true,
@@ -215,20 +217,8 @@ export class EmployeeService {
       }
 
       // 3. Soft delete the user
-      const result = await this.prisma.user.update({
+      const result = await this.prisma.user.delete({
         where: { id },
-        data: { deleted_at: new Date() },
-        select: {
-          id: true,
-          first_name: true,
-          last_name: true,
-          name: true,
-          avatar: true,
-          employee_role: true,
-          hourly_rate: true,
-          recorded_hours: true,
-          earning: true,
-        },
       });
 
       return { success: true, data: result };
