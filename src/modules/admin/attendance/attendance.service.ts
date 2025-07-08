@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
+import { toZonedTime } from 'date-fns-tz';
 
 @Injectable()
 export class AttendanceService {
@@ -55,6 +56,13 @@ export class AttendanceService {
           address: dto.address,
         },
       });
+
+      // After creating attendance, fill ABSENT days for this user for the month
+      const dateObj = new Date(dto.date);
+      const month = dateObj.getMonth() + 1; // JS months are 0-based
+      const year = dateObj.getFullYear();
+      await this.fillAbsentDaysForUserMonth(dto.user_id, month, year);
+
       return { success: true, data: attendance };
     } catch (error) {
       return { success: false, message: error.message };
@@ -305,5 +313,105 @@ export class AttendanceService {
     } catch (error) {
       return { success: false, message: error.message };
     }
+  }
+
+  async fillAbsentDaysForMonth(month: number, year: number) {
+    // Get all employees
+    const employees = await this.prisma.user.findMany({
+      where: { type: 'employee', deleted_at: null },
+      select: { id: true },
+    });
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    for (const emp of employees) {
+      // Get all attendance dates for this employee in the month
+      const records = await this.prisma.attendance.findMany({
+        where: {
+          user_id: emp.id,
+          date: {
+            gte: new Date(year, month - 1, 1),
+            lte: new Date(year, month - 1, daysInMonth),
+          },
+          deleted_at: null,
+        },
+        select: { date: true },
+      });
+      const attendedDays = new Set(records.map(r => r.date.toISOString().slice(0, 10)));
+
+      // For each day in the month, if not attended, create ABSENT
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateObj = new Date(year, month - 1, d);
+        const dateStr = dateObj.toISOString().slice(0, 10);
+        if (!attendedDays.has(dateStr)) {
+          await this.prisma.attendance.create({
+            data: {
+              user_id: emp.id,
+              date: dateObj,
+              attendance_status: 'ABSENT',
+              hours: 0,
+            },
+          });
+        }
+      }
+    }
+    return { success: true, message: 'Absent days filled for all employees.' };
+  }
+
+  async fillAbsentDaysForUserMonth(user_id: string, month: number, year: number) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const timeZone = 'Europe/Lisbon';
+
+    // 1. Get all OFF_DAY and HOLIDAY dates from academic calendar
+    const calendarEvents = await this.prisma.academicCalendar.findMany({
+      where: {
+        deleted_at: null,
+        start_date: {
+          gte: new Date(year, month - 1, 1),
+          lte: new Date(year, month - 1, daysInMonth),
+        },
+        event_type: { in: ['OFF_DAY', 'HOLIDAY', 'EVENT'] },
+      },
+      select: { start_date: true },
+    });
+    const skipDates = new Set(
+      calendarEvents.map(ev => toZonedTime(ev.start_date, timeZone).toISOString().slice(0, 10))
+    );
+
+    // 2. Get all attendance dates for this user in the month
+    const records = await this.prisma.attendance.findMany({
+      where: {
+        user_id,
+        date: {
+          gte: new Date(year, month - 1, 1),
+          lte: new Date(year, month - 1, daysInMonth),
+        },
+        deleted_at: null,
+      },
+      select: { date: true },
+    });
+    const attendedDays = new Set(records.map(r => r.date.toISOString().slice(0, 10)));
+
+    // 3. For each day, skip if Sunday or in skipDates, else create ABSENT if missing
+    for (let d = 1; d <= daysInMonth; d++) {
+      const utcDate = new Date(Date.UTC(year, month - 1, d));
+      const dateObj = toZonedTime(utcDate, timeZone);
+      const dateStr = dateObj.toISOString().slice(0, 10);
+
+      // Skip if Sunday or in academic calendar OFF_DAY/HOLIDAY
+      if (dateObj.getDay() === 0 || skipDates.has(dateStr)) continue;
+
+      if (!attendedDays.has(dateStr)) {
+        await this.prisma.attendance.create({
+          data: {
+            user_id,
+            date: dateObj,
+            attendance_status: 'ABSENT',
+            hours: 0,
+          },
+        });
+      }
+    }
+    return { success: true };
   }
 }

@@ -32,8 +32,13 @@ export class AttendanceController {
 
   @Get('employee/:user_id')
   @Roles(Role.EMPLOYEE)
-  getEmployeeAttendance(@Param('user_id') user_id: string, @Query('month') month: string, @Query('year') year: string) {
-    return this.attendanceService.getEmployeeAttendance({ user_id, month, year });
+  getEmployeeAttendance(
+    @Param('user_id') user_id: string,
+    @Query('month') month: string,
+    @Query('year') year?: string,
+  ) {
+    const yearToUse = year || new Date().getFullYear().toString();
+    return this.attendanceService.getEmployeeAttendance({ user_id, month, year: yearToUse });
   }
 
   @Get(':id')

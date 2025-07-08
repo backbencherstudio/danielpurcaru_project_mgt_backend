@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { DateHelper } from 'src/common/helper/date.helper';
+import { toZonedTime } from 'date-fns-tz';
 
 @Injectable()
 export class DashboardService {
@@ -118,4 +119,110 @@ export class DashboardService {
             },
         };
     }
+
+    async getEmployeeSummary(user_id: string) {
+        // Get employee basic info
+        const emp = await this.prisma.user.findUnique({
+            where: { id: user_id, deleted_at: null },
+            select: {
+                id: true,
+                name: true,
+                employee_role: true,
+                hourly_rate: true,
+            },
+        });
+        if (!emp) return { success: false, message: 'Employee not found' };
+
+        // Calculate total hours
+        const agg = await this.prisma.attendance.aggregate({
+            where: { user_id, deleted_at: null },
+            _sum: { hours: true },
+        });
+        const totalHours = Number(agg._sum.hours) || 0;
+        const perHour = Number(emp.hourly_rate) || 0;
+        const earning = totalHours * perHour;
+
+        return {
+            success: true,
+            data: {
+                name: emp.name,
+                role: emp.employee_role,
+                totalHours,
+                perHour,
+                earning,
+            },
+        };
+    }
+
+    async getEmployeeMonthAttendanceSummary(user_id: string, month: string, year?: string) {
+        const yearNum = Number(year) || new Date().getFullYear();
+        const monthNum = Number(month);
+        const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+        const timeZone = 'Europe/Lisbon';
+
+        // Get all OFF_DAY and HOLIDAY dates from academic calendar
+        const calendarEvents = await this.prisma.academicCalendar.findMany({
+            where: {
+                deleted_at: null,
+                start_date: {
+                    gte: new Date(yearNum, monthNum - 1, 1),
+                    lte: new Date(yearNum, monthNum - 1, daysInMonth),
+                },
+                event_type: { in: ['OFF_DAY', 'HOLIDAY'] },
+            },
+            select: { start_date: true },
+        });
+        const skipDates = new Set(
+            calendarEvents.map(ev => toZonedTime(ev.start_date, timeZone).toISOString().slice(0, 10))
+        );
+
+        // Get all attendance for this user in the month
+        const records = await this.prisma.attendance.findMany({
+            where: {
+                user_id,
+                date: {
+                    gte: new Date(yearNum, monthNum - 1, 1),
+                    lte: new Date(yearNum, monthNum - 1, daysInMonth),
+                },
+                deleted_at: null,
+            },
+            select: { date: true, attendance_status: true },
+        });
+        const recordMap = new Map(records.map(r => [r.date.toISOString().slice(0, 10), r.attendance_status]));
+
+        // Build day list and count
+        let complete = 0, unfinished = 0, totalWorkingDays = 0;
+        const days = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+            const utcDate = new Date(Date.UTC(yearNum, monthNum - 1, d));
+            const dateObj = toZonedTime(utcDate, timeZone);
+            const dateStr = dateObj.toISOString().slice(0, 10);
+
+            // Skip if Sunday or in academic calendar OFF_DAY/HOLIDAY
+            if (dateObj.getDay() === 0 || skipDates.has(dateStr)) continue;
+
+            totalWorkingDays++;
+            const status = recordMap.get(dateStr) || 'Unfinished';
+            if (status === 'PRESENT') complete++;
+            else unfinished++;
+
+            days.push({ date: dateStr, status });
+        }
+
+        const percentComplete = totalWorkingDays ? Math.round((complete / totalWorkingDays) * 100) : 0;
+        const percentUnfinished = 100 - percentComplete;
+
+        return {
+            success: true,
+            data: {
+                complete,
+                unfinished,
+                percentComplete,
+                percentUnfinished,
+                totalWorkingDays,
+                days, // for calendar view
+            }
+        };
+    }
+
 }
