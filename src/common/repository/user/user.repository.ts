@@ -245,6 +245,26 @@ export class UserRepository {
         );
       }
 
+      // Generate base username
+      let baseUsername = '';
+      if (first_name && last_name) {
+        baseUsername = (first_name[0] + last_name).toLowerCase().replace(/[^a-z0-9]/g, '');
+      } else if (name) {
+        baseUsername = name.toLowerCase()[0];
+      } else if (email) {
+        baseUsername = email.split('@')[0];
+      } else {
+        baseUsername = 'user';
+      }
+      let username = baseUsername;
+      let suffix = 1;
+
+      // Ensure uniqueness
+      while (await prisma.user.findUnique({ where: { username } })) {
+        username = `${baseUsername}${suffix++}`;
+      }
+      data['username'] = username;
+
       if (type && ArrayHelper.inArray(type, Object.values(Role))) {
         data['type'] = type;
 

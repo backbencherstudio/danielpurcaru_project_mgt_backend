@@ -117,6 +117,7 @@ export class AuthService {
         data.date_of_birth = DateHelper.format(updateUserDto.date_of_birth);
       }
       if (image) {
+
         // delete old image from storage
         const oldImage = await this.prisma.user.findFirst({
           where: { id: userId },
@@ -165,21 +166,24 @@ export class AuthService {
   }
 
   async validateUser(
-    email: string,
+    identifier: string, // can be username or email
     pass: string,
     token?: string,
   ): Promise<any> {
-    const _password = pass;
+    // Find user by username OR email
     const user = await this.prisma.user.findFirst({
       where: {
-        email: email,
+        OR: [
+          { username: identifier },
+          { email: identifier }
+        ]
       },
     });
 
     if (user) {
       const _isValidPassword = await UserRepository.validatePassword({
-        email: email,
-        password: _password,
+        email: user.email,
+        password: pass,
       });
       if (_isValidPassword) {
         const { password, ...result } = user;
@@ -188,33 +192,17 @@ export class AuthService {
             const isValid = await UserRepository.verify2FA(user.id, token);
             if (!isValid) {
               throw new UnauthorizedException('Invalid token');
-              // return {
-              //   success: false,
-              //   message: 'Invalid token',
-              // };
             }
           } else {
             throw new UnauthorizedException('Token is required');
-            // return {
-            //   success: false,
-            //   message: 'Token is required',
-            // };
           }
         }
         return result;
       } else {
         throw new UnauthorizedException('Password not matched');
-        // return {
-        //   success: false,
-        //   message: 'Password not matched',
-        // };
       }
     } else {
-      throw new UnauthorizedException('Email not found');
-      // return {
-      //   success: false,
-      //   message: 'Email not found',
-      // };
+      throw new UnauthorizedException('User not found');
     }
   }
 

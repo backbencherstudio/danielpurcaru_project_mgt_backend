@@ -3,6 +3,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { ProjectQueryDto } from './dto/project-query.dto';
+import { FileUrlHelper } from 'src/common/helper/file-url.helper';
 
 @Injectable()
 export class ProjectService {
@@ -18,7 +19,7 @@ export class ProjectService {
           address: dto.address,
           start_date: dto.start_date ? new Date(dto.start_date) : undefined,
           end_date: dto.end_date ? new Date(dto.end_date) : undefined,
-          budget: dto.budget,
+          price: dto.price,
           cost: dto.cost,
           priority: dto.priority,
           ...(userId && { userId }),
@@ -77,6 +78,7 @@ export class ProjectService {
           end_date: true,
           priority: true,
           cost: true,
+          price: true,
           status: true,
           assignees: {
             select: {
@@ -93,6 +95,15 @@ export class ProjectService {
         },
       });
 
+      // Add avatarUrl to each assignee's user
+      const dataWithAvatarUrl = data.map(project => ({
+        ...project,
+        assignees: project.assignees.map(a => ({
+          ...a,
+          user: FileUrlHelper.addAvatarUrl(a.user),
+        })),
+      }));
+
       return {
         success: true,
         meta: {
@@ -101,7 +112,7 @@ export class ProjectService {
           limit: pageSize,
           totalPages: Math.ceil(total / pageSize),
         },
-        data,
+        data: dataWithAvatarUrl,
       };
     } catch (error) {
       return { success: false, message: error.message };
@@ -110,17 +121,17 @@ export class ProjectService {
 
   async findOne(id: string) {
     try {
-      const data = await this.prisma.project.findUnique({
+      // Get project with assignees and user info
+      const project = await this.prisma.project.findUnique({
         where: { id },
         select: {
           id: true,
           name: true,
-          end_date: true,
-          priority: true,
-          cost: true,
           status: true,
+          price: true,
+          cost: true,
           assignees: {
-            include: {
+            select: {
               user: {
                 select: {
                   id: true,
@@ -131,15 +142,48 @@ export class ProjectService {
                   avatar: true,
                   employee_role: true,
                   hourly_rate: true,
-                  recorded_hours: true,
-                  earning: true,
-                }
-              }
+                },
+              },
             },
           },
         },
       });
-      return { success: true, data };
+      if (!project) return { success: false, message: 'Project not found' };
+      // For each assignee, calculate total hours and cost
+      const assigneeData = await Promise.all(
+        project.assignees.map(async (a) => {
+          const agg = await this.prisma.attendance.aggregate({
+            where: { user_id: a.user.id, deleted_at: null },
+            _sum: { hours: true },
+          });
+          const hours = Number(agg._sum.hours) || 0;
+          const cost = hours * Number(a.user.hourly_rate || 0);
+          const userWithAvatarUrl = FileUrlHelper.addAvatarUrl(a.user);
+          return {
+            id: a.user.id,
+            name: a.user.name,
+            avatarUrl: userWithAvatarUrl.avatarUrl,
+            role: a.user.employee_role,
+            hours,
+            cost,
+          };
+        })
+      );
+      // Calculate project totals
+      const totalHours = assigneeData.reduce((sum, a) => sum + a.hours, 0);
+      const totalCost = assigneeData.reduce((sum, a) => sum + a.cost, 0);
+      return {
+        success: true,
+        data: {
+          id: project.id,
+          name: project.name,
+          status: project.status,
+          price: project.price,
+          totalCost,
+          totalHours,
+          assignees: assigneeData,
+        },
+      };
     } catch (error) {
       return { success: false, message: error.message };
     }

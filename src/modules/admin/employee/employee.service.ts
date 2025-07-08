@@ -29,6 +29,19 @@ export class EmployeeService {
         return { success: false, message: 'Email already exists' };
       }
 
+      // Generate base username
+      let baseUsername = (createEmployeeDto.first_name[0] + createEmployeeDto.last_name).toLowerCase().replace(/[^a-z0-9]/g, '');
+      let username = baseUsername;
+      let suffix = 1;
+
+      // Ensure uniqueness
+      while (await this.prisma.user.findUnique({ where: { username } })) {
+        username = `${baseUsername}${suffix++}`;
+      }
+
+      // Add to createEmployeeDto
+      createEmployeeDto.username = username;
+
       // Hash password
       const hashedPassword = await bcrypt.hash(createEmployeeDto.password, appConfig().security.salt);
 
@@ -55,26 +68,27 @@ export class EmployeeService {
           hourly_rate: createEmployeeDto.hourly_rate,
           address: createEmployeeDto.address,
           avatar: createEmployeeDto.avatar,
+          username: createEmployeeDto.username,
         },
       });
 
-      // create stripe customer account
-      const stripeCustomer = await StripePayment.createCustomer({
-        user_id: result.id,
-        email: result.email,
-        name: result.name
-      });
+      // // create stripe customer account
+      // const stripeCustomer = await StripePayment.createCustomer({
+      //   user_id: result.id,
+      //   email: result.email,
+      //   name: result.name
+      // });
 
-      if (stripeCustomer) {
-        await this.prisma.user.update({
-          where: {
-            id: result.id,
-          },
-          data: {
-            billing_id: stripeCustomer.id,
-          },
-        });
-      }
+      // if (stripeCustomer) {
+      //   await this.prisma.user.update({
+      //     where: {
+      //       id: result.id,
+      //     },
+      //     data: {
+      //       billing_id: stripeCustomer.id,
+      //     },
+      //   });
+      // }
 
       // Generate verification token
       await UcodeRepository.createVerificationToken({
@@ -129,13 +143,12 @@ export class EmployeeService {
           id: true,
           first_name: true,
           last_name: true,
+          username: true,
           name: true,
           email: true,
           avatar: true,
           employee_role: true,
           hourly_rate: true,
-          recorded_hours: true,
-          earning: true,
         },
         orderBy: {
           first_name: 'asc',
@@ -144,7 +157,23 @@ export class EmployeeService {
         take: pageSize,
       });
 
-      const dataWithUrls = data.map(FileUrlHelper.addAvatarUrl);
+      // For each employee, calculate recorded_hours and earning
+      const dataWithHours = await Promise.all(data.map(async (emp) => {
+        const agg = await this.prisma.attendance.aggregate({
+          where: { user_id: emp.id, deleted_at: null },
+          _sum: { hours: true },
+        });
+        const recorded_hours = Number(agg._sum.hours) || 0;
+        const earning = recorded_hours * Number(emp.hourly_rate || 0);
+
+        // Update the user with new recorded_hours and earning
+        await this.prisma.user.update({
+          where: { id: emp.id },
+          data: { recorded_hours, earning },
+        });
+
+        return FileUrlHelper.addAvatarUrl({ ...emp, recorded_hours, earning });
+      }));
 
       return {
         success: true,
@@ -154,7 +183,7 @@ export class EmployeeService {
           limit: pageSize,
           totalPages: Math.ceil(total / pageSize),
         },
-        data: dataWithUrls,
+        data: dataWithHours,
       };
     } catch (error) {
       return { success: false, message: error.message };
@@ -163,10 +192,28 @@ export class EmployeeService {
 
   async findOne(id: string) {
     try {
-      const result = await this.prisma.user.findUnique({
+      const emp = await this.prisma.user.findUnique({
         where: { id, type: 'employee', deleted_at: null },
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          name: true,
+          username: true,
+          email: true,
+          avatar: true,
+          employee_role: true,
+          hourly_rate: true,
+        },
       });
-      const dataWithUrl = FileUrlHelper.addAvatarUrl(result);
+      if (!emp) return { success: false, message: 'Employee not found' };
+      const agg = await this.prisma.attendance.aggregate({
+        where: { user_id: emp.id, deleted_at: null },
+        _sum: { hours: true },
+      });
+      const recorded_hours = Number(agg._sum.hours) || 0;
+      const earning = recorded_hours * Number(emp.hourly_rate || 0);
+      const dataWithUrl = FileUrlHelper.addAvatarUrl({ ...emp, recorded_hours, earning });
       return { success: true, data: dataWithUrl };
     } catch (error) {
       return { success: false, message: error.message };

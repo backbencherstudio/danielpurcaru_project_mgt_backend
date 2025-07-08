@@ -18,12 +18,12 @@ export class LocalAuthGuard extends AuthGuard('local') {
   handleRequest(err, user, info, context: ExecutionContext, status) {
     // You can throw an exception based on either "info" or "err" arguments
     const request = context.switchToHttp().getRequest();
-    const { email, password } = request.body;
+    const { identifier, password } = request.body;
 
     if (err || !user) {
-      if (!email) {
+      if (!identifier) {
         throw new HttpException(
-          { message: 'email not provided' },
+          { message: 'identifier not provided' },
           HttpStatus.OK,
         );
       } else if (!password) {

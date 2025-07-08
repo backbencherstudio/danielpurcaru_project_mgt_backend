@@ -7,6 +7,11 @@ import { UserModule } from './user/user.module';
 import { NotificationModule } from './notification/notification.module';
 import { EmployeeModule } from './employee/employee.module';
 import { ProjectModule } from './project/project.module';
+import { EmployeeHolidayModule } from './employee-holiday/employee-holiday.module';
+import { AttendanceModule } from './attendance/attendance.module';
+import { AcademicCalendarModule } from './academic-calendar/academic-calendar.module';
+import { EmployeeLoanModule } from './employee-loan/employee-loan.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -18,6 +23,11 @@ import { ProjectModule } from './project/project.module';
     NotificationModule,
     EmployeeModule,
     ProjectModule,
+    EmployeeHolidayModule,
+    AttendanceModule,
+    AcademicCalendarModule,
+    EmployeeLoanModule,
+    DashboardModule,
   ],
 })
 export class AdminModule {}

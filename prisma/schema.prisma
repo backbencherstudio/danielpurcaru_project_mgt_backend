@@ -90,12 +90,11 @@ model User {
   payment_transactions PaymentTransaction[]
 
   // Project Management
-  employeeHoliday      EmployeeHoliday[]
-  project              Project[]
-  attendance           Attendance[]
-  projectAssignee      ProjectAssignee[]
-  employeeLoan         EmployeeLoan[]
-  admin_approved_loans EmployeeLoan[]    @relation("LoanApprover")
+  employeeHoliday EmployeeHoliday[]
+  project         Project[]
+  attendance      Attendance[]
+  projectAssignee ProjectAssignee[]
+  employeeLoan    EmployeeLoan[]
 
   @@map("users")
 }
@@ -458,7 +457,7 @@ model Project {
   name       String           @db.VarChar(255)
   start_date DateTime?
   end_date   DateTime?
-  budget     Decimal?
+  price      Decimal?
   cost       Decimal?
   address    String           @db.VarChar(255)
   priority   ProjectPriority? @default(MEDIUM)
@@ -490,9 +489,9 @@ model Attendance {
   updated_at DateTime  @default(now())
   deleted_at DateTime?
   status     Int?      @default(1) @db.SmallInt
-
-  user_id String
-  user    User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  address    String?
+  user_id    String
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   date              DateTime          @db.Date
   start_time        DateTime?
@@ -520,7 +519,7 @@ model AcademicCalendar {
 
   start_date DateTime?
   end_date   DateTime?
-  all_day    Boolean?  @default(false)
+  all_day    Boolean?  @default(true)
 
   location  String? @db.VarChar(255)
   organizer String? @db.VarChar(255)
@@ -544,43 +543,9 @@ model EmployeeLoan {
   loan_purpose String?     @db.VarChar(255)
   loan_status  LoanStatus? @default(PENDING)
 
-  approved_by_id String?
-  approved_by    User?   @relation("LoanApprover", fields: [approved_by_id], references: [id])
-
-  approved_date  DateTime?
-  disbursed_date DateTime?
-
-  interest_rate   Decimal? @default(0)
-  monthly_payment Decimal?
-  total_payable   Decimal?
-
-  start_date DateTime?
-  end_date   DateTime?
-
-  notes         String?       @db.Text
-  loan_payments LoanPayment[]
-
-  @@map("employee_loans")
-}
-
-// Loan Payment model
-model LoanPayment {
-  id         String    @id @default(cuid())
-  created_at DateTime  @default(now())
-  updated_at DateTime  @default(now())
-  deleted_at DateTime?
-  status     Int?      @default(1) @db.SmallInt
-
-  loan_id String
-  loan    EmployeeLoan @relation(fields: [loan_id], references: [id], onDelete: Cascade)
-
-  payment_amount Decimal
-  payment_date   DateTime
-  payment_method String?  @db.VarChar(50)
-
   notes String? @db.Text
 
-  @@map("loan_payments")
+  @@map("employee_loans")
 }
 
 //----------Enum-----------//
@@ -636,4 +601,5 @@ enum CalendarEventType {
   DEADLINE
   TRAINING
   EVENT
+  OFF_DAY
 }
