@@ -117,6 +117,7 @@ export class AuthService {
         data.date_of_birth = DateHelper.format(updateUserDto.date_of_birth);
       }
       if (image) {
+
         // delete old image from storage
         const oldImage = await this.prisma.user.findFirst({
           where: { id: userId },

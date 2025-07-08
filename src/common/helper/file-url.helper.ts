@@ -3,7 +3,6 @@ import appConfig from '../../config/app.config';
 
 export class FileUrlHelper {
 
-
     static addAvatarUrl(item: any) {
         if (!item) return item;
         if (item.avatar) {

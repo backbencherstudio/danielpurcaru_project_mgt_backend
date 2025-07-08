@@ -7,6 +7,8 @@ import { UserModule } from './user/user.module';
 import { NotificationModule } from './notification/notification.module';
 import { EmployeeModule } from './employee/employee.module';
 import { ProjectModule } from './project/project.module';
+import { EmployeeHolidayModule } from './employee-holiday/employee-holiday.module';
+import { AttendanceModule } from './attendance/attendance.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { ProjectModule } from './project/project.module';
     NotificationModule,
     EmployeeModule,
     ProjectModule,
+    EmployeeHolidayModule,
+    AttendanceModule,
   ],
 })
 export class AdminModule {}

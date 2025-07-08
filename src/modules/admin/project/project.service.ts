@@ -3,6 +3,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { ProjectQueryDto } from './dto/project-query.dto';
+import { FileUrlHelper } from 'src/common/helper/file-url.helper';
 
 @Injectable()
 export class ProjectService {
@@ -93,6 +94,15 @@ export class ProjectService {
         },
       });
 
+      // Add avatarUrl to each assignee's user
+      const dataWithAvatarUrl = data.map(project => ({
+        ...project,
+        assignees: project.assignees.map(a => ({
+          ...a,
+          user: FileUrlHelper.addAvatarUrl(a.user),
+        })),
+      }));
+
       return {
         success: true,
         meta: {
@@ -101,7 +111,7 @@ export class ProjectService {
           limit: pageSize,
           totalPages: Math.ceil(total / pageSize),
         },
-        data,
+        data: dataWithAvatarUrl,
       };
     } catch (error) {
       return { success: false, message: error.message };
@@ -139,6 +149,13 @@ export class ProjectService {
           },
         },
       });
+      // Add avatarUrl to each assignee's user
+      if (data) {
+        data.assignees = data.assignees.map(a => ({
+          ...a,
+          user: FileUrlHelper.addAvatarUrl(a.user),
+        }));
+      }
       return { success: true, data };
     } catch (error) {
       return { success: false, message: error.message };
