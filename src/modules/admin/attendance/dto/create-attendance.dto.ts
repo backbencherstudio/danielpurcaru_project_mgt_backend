@@ -35,4 +35,8 @@ export class CreateAttendanceDto {
     @IsOptional()
     @IsString()
     notes?: string;
+
+    @IsOptional()
+    @IsString()
+    address?: string;
 }

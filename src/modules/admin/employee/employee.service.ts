@@ -29,6 +29,19 @@ export class EmployeeService {
         return { success: false, message: 'Email already exists' };
       }
 
+      // Generate base username
+      let baseUsername = (createEmployeeDto.first_name[0] + createEmployeeDto.last_name).toLowerCase().replace(/[^a-z0-9]/g, '');
+      let username = baseUsername;
+      let suffix = 1;
+
+      // Ensure uniqueness
+      while (await this.prisma.user.findUnique({ where: { username } })) {
+        username = `${baseUsername}${suffix++}`;
+      }
+
+      // Add to createEmployeeDto
+      createEmployeeDto.username = username;
+
       // Hash password
       const hashedPassword = await bcrypt.hash(createEmployeeDto.password, appConfig().security.salt);
 
@@ -55,26 +68,27 @@ export class EmployeeService {
           hourly_rate: createEmployeeDto.hourly_rate,
           address: createEmployeeDto.address,
           avatar: createEmployeeDto.avatar,
+          username: createEmployeeDto.username,
         },
       });
 
-      // create stripe customer account
-      const stripeCustomer = await StripePayment.createCustomer({
-        user_id: result.id,
-        email: result.email,
-        name: result.name
-      });
+      // // create stripe customer account
+      // const stripeCustomer = await StripePayment.createCustomer({
+      //   user_id: result.id,
+      //   email: result.email,
+      //   name: result.name
+      // });
 
-      if (stripeCustomer) {
-        await this.prisma.user.update({
-          where: {
-            id: result.id,
-          },
-          data: {
-            billing_id: stripeCustomer.id,
-          },
-        });
-      }
+      // if (stripeCustomer) {
+      //   await this.prisma.user.update({
+      //     where: {
+      //       id: result.id,
+      //     },
+      //     data: {
+      //       billing_id: stripeCustomer.id,
+      //     },
+      //   });
+      // }
 
       // Generate verification token
       await UcodeRepository.createVerificationToken({
@@ -129,6 +143,7 @@ export class EmployeeService {
           id: true,
           first_name: true,
           last_name: true,
+          username: true,
           name: true,
           email: true,
           avatar: true,
@@ -177,6 +192,7 @@ export class EmployeeService {
           first_name: true,
           last_name: true,
           name: true,
+          username: true,
           email: true,
           avatar: true,
           employee_role: true,

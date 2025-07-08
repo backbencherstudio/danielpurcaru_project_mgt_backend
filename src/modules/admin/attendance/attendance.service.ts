@@ -52,6 +52,7 @@ export class AttendanceService {
           hours,
           attendance_status: dto.attendance_status,
           notes: dto.notes,
+          address: dto.address,
         },
       });
       return { success: true, data: attendance };

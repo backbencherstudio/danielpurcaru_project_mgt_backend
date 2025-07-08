@@ -10,6 +10,7 @@ import { ProjectModule } from './project/project.module';
 import { EmployeeHolidayModule } from './employee-holiday/employee-holiday.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { AcademicCalendarModule } from './academic-calendar/academic-calendar.module';
+import { EmployeeLoanModule } from './employee-loan/employee-loan.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AcademicCalendarModule } from './academic-calendar/academic-calendar.mo
     EmployeeHolidayModule,
     AttendanceModule,
     AcademicCalendarModule,
+    EmployeeLoanModule,
   ],
 })
 export class AdminModule {}
