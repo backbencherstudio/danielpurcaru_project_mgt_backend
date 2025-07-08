@@ -1,7 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards } from '@nestjs/common';
 import { AcademicCalendarService } from './academic-calendar.service';
 import { CreateAcademicCalendarDto } from './dto/create-academic-calendar.dto';
 import { UpdateAcademicCalendarDto } from './dto/update-academic-calendar.dto';
+import { Roles } from 'src/common/guard/role/roles.decorator';
+import { Role } from 'src/common/guard/role/role.enum';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/common/guard/role/roles.guard';
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.ADMIN)
 
 @Controller('academic-calendar')
 export class AcademicCalendarController {

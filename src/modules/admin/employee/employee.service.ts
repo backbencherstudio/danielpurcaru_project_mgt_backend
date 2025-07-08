@@ -165,6 +165,13 @@ export class EmployeeService {
         });
         const recorded_hours = Number(agg._sum.hours) || 0;
         const earning = recorded_hours * Number(emp.hourly_rate || 0);
+
+        // Update the user with new recorded_hours and earning
+        await this.prisma.user.update({
+          where: { id: emp.id },
+          data: { recorded_hours, earning },
+        });
+
         return FileUrlHelper.addAvatarUrl({ ...emp, recorded_hours, earning });
       }));
 
