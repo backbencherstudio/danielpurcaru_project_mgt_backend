@@ -120,17 +120,15 @@ export class ProjectService {
 
   async findOne(id: string) {
     try {
-      const data = await this.prisma.project.findUnique({
+      // Get project with assignees and user info
+      const project = await this.prisma.project.findUnique({
         where: { id },
         select: {
           id: true,
           name: true,
-          end_date: true,
-          priority: true,
-          cost: true,
           status: true,
           assignees: {
-            include: {
+            select: {
               user: {
                 select: {
                   id: true,
@@ -141,22 +139,47 @@ export class ProjectService {
                   avatar: true,
                   employee_role: true,
                   hourly_rate: true,
-                  recorded_hours: true,
-                  earning: true,
-                }
-              }
+                },
+              },
             },
           },
         },
       });
-      // Add avatarUrl to each assignee's user
-      if (data) {
-        data.assignees = data.assignees.map(a => ({
-          ...a,
-          user: FileUrlHelper.addAvatarUrl(a.user),
-        }));
-      }
-      return { success: true, data };
+      if (!project) return { success: false, message: 'Project not found' };
+      // For each assignee, calculate total hours and cost
+      const assigneeData = await Promise.all(
+        project.assignees.map(async (a) => {
+          const agg = await this.prisma.attendance.aggregate({
+            where: { user_id: a.user.id, deleted_at: null },
+            _sum: { hours: true },
+          });
+          const hours = Number(agg._sum.hours) || 0;
+          const cost = hours * Number(a.user.hourly_rate || 0);
+          const userWithAvatarUrl = FileUrlHelper.addAvatarUrl(a.user);
+          return {
+            id: a.user.id,
+            name: a.user.name,
+            avatarUrl: userWithAvatarUrl.avatarUrl,
+            role: a.user.employee_role,
+            hours,
+            cost,
+          };
+        })
+      );
+      // Calculate project totals
+      const totalHours = assigneeData.reduce((sum, a) => sum + a.hours, 0);
+      const totalCost = assigneeData.reduce((sum, a) => sum + a.cost, 0);
+      return {
+        success: true,
+        data: {
+          id: project.id,
+          name: project.name,
+          status: project.status,
+          totalHours,
+          totalCost,
+          assignees: assigneeData,
+        },
+      };
     } catch (error) {
       return { success: false, message: error.message };
     }

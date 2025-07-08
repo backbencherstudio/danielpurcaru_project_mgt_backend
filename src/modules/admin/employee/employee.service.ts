@@ -134,8 +134,6 @@ export class EmployeeService {
           avatar: true,
           employee_role: true,
           hourly_rate: true,
-          recorded_hours: true,
-          earning: true,
         },
         orderBy: {
           first_name: 'asc',
@@ -144,7 +142,16 @@ export class EmployeeService {
         take: pageSize,
       });
 
-      const dataWithUrls = data.map(FileUrlHelper.addAvatarUrl);
+      // For each employee, calculate recorded_hours and earning
+      const dataWithHours = await Promise.all(data.map(async (emp) => {
+        const agg = await this.prisma.attendance.aggregate({
+          where: { user_id: emp.id, deleted_at: null },
+          _sum: { hours: true },
+        });
+        const recorded_hours = Number(agg._sum.hours) || 0;
+        const earning = recorded_hours * Number(emp.hourly_rate || 0);
+        return FileUrlHelper.addAvatarUrl({ ...emp, recorded_hours, earning });
+      }));
 
       return {
         success: true,
@@ -154,7 +161,7 @@ export class EmployeeService {
           limit: pageSize,
           totalPages: Math.ceil(total / pageSize),
         },
-        data: dataWithUrls,
+        data: dataWithHours,
       };
     } catch (error) {
       return { success: false, message: error.message };
@@ -163,10 +170,27 @@ export class EmployeeService {
 
   async findOne(id: string) {
     try {
-      const result = await this.prisma.user.findUnique({
+      const emp = await this.prisma.user.findUnique({
         where: { id, type: 'employee', deleted_at: null },
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          name: true,
+          email: true,
+          avatar: true,
+          employee_role: true,
+          hourly_rate: true,
+        },
       });
-      const dataWithUrl = FileUrlHelper.addAvatarUrl(result);
+      if (!emp) return { success: false, message: 'Employee not found' };
+      const agg = await this.prisma.attendance.aggregate({
+        where: { user_id: emp.id, deleted_at: null },
+        _sum: { hours: true },
+      });
+      const recorded_hours = Number(agg._sum.hours) || 0;
+      const earning = recorded_hours * Number(emp.hourly_rate || 0);
+      const dataWithUrl = FileUrlHelper.addAvatarUrl({ ...emp, recorded_hours, earning });
       return { success: true, data: dataWithUrl };
     } catch (error) {
       return { success: false, message: error.message };
