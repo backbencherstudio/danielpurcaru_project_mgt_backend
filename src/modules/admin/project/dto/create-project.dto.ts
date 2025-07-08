@@ -20,7 +20,7 @@ export class CreateProjectDto {
 
     @IsOptional()
     @IsNumber()
-    budget?: number;
+    price?: number;
 
     @IsOptional()
     @IsNumber()

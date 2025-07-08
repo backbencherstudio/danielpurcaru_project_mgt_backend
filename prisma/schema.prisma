@@ -458,7 +458,7 @@ model Project {
   name       String           @db.VarChar(255)
   start_date DateTime?
   end_date   DateTime?
-  budget     Decimal?
+  price      Decimal?
   cost       Decimal?
   address    String           @db.VarChar(255)
   priority   ProjectPriority? @default(MEDIUM)
@@ -520,7 +520,7 @@ model AcademicCalendar {
 
   start_date DateTime?
   end_date   DateTime?
-  all_day    Boolean?  @default(false)
+  all_day    Boolean?  @default(true)
 
   location  String? @db.VarChar(255)
   organizer String? @db.VarChar(255)
@@ -636,4 +636,5 @@ enum CalendarEventType {
   DEADLINE
   TRAINING
   EVENT
+  OFF_DAY
 }

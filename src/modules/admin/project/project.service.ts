@@ -19,7 +19,7 @@ export class ProjectService {
           address: dto.address,
           start_date: dto.start_date ? new Date(dto.start_date) : undefined,
           end_date: dto.end_date ? new Date(dto.end_date) : undefined,
-          budget: dto.budget,
+          price: dto.price,
           cost: dto.cost,
           priority: dto.priority,
           ...(userId && { userId }),
@@ -78,6 +78,7 @@ export class ProjectService {
           end_date: true,
           priority: true,
           cost: true,
+          price: true,
           status: true,
           assignees: {
             select: {
@@ -127,6 +128,8 @@ export class ProjectService {
           id: true,
           name: true,
           status: true,
+          price: true,
+          cost: true,
           assignees: {
             select: {
               user: {
@@ -175,8 +178,9 @@ export class ProjectService {
           id: project.id,
           name: project.name,
           status: project.status,
-          totalHours,
+          price: project.price,
           totalCost,
+          totalHours,
           assignees: assigneeData,
         },
       };
