@@ -29,6 +29,7 @@ export class DashboardController {
     @Query('start') start: string, // can be month or date
     @Query('end') end?: string,    // optional
     @Query('year') year?: string,  // optional
+    @Query('project_id') project_id?: string, // <-- add this line
   ) {
     // If only month is provided (e.g., start = '06'), use current year
     if (start && !start.includes('-') && !end) {
@@ -38,10 +39,10 @@ export class DashboardController {
       const firstDay = `${yearToUse}-${month}-01`;
       const lastDay = new Date(Number(yearToUse), Number(month), 0); // last day of month
       const lastDayStr = `${yearToUse}-${month}-${lastDay.getDate().toString().padStart(2, '0')}`;
-      return this.dashboardService.getAttendanceReport({ start: firstDay, end: lastDayStr });
+      return this.dashboardService.getAttendanceReport({ start: firstDay, end: lastDayStr, project_id }); // <-- pass project_id
     }
     // If both start and end are provided, use as is
-    return this.dashboardService.getAttendanceReport({ start, end });
+    return this.dashboardService.getAttendanceReport({ start, end, project_id }); // <-- pass project_id
   }
 
   @Get('employee/:user_id')

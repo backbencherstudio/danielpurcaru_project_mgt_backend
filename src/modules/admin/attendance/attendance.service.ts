@@ -45,6 +45,7 @@ export class AttendanceService {
       const attendance = await this.prisma.attendance.create({
         data: {
           user_id: dto.user_id,
+          project_id: dto.project_id,
           date: new Date(dto.date),
           start_time,
           lunch_start,
@@ -61,7 +62,7 @@ export class AttendanceService {
       const dateObj = new Date(dto.date);
       const month = dateObj.getMonth() + 1; // JS months are 0-based
       const year = dateObj.getFullYear();
-      await this.fillAbsentDaysForUserMonth(dto.user_id, month, year);
+      await this.fillAbsentDaysForUserMonth(dto.user_id, month, year, dto.project_id);
 
       return { success: true, data: attendance };
     } catch (error) {
@@ -181,12 +182,11 @@ export class AttendanceService {
       // Build result for each day
       const result = [];
       for (let d = 1; d <= daysInMonth; d++) {
-        const dateObj = new Date(Number(year), Number(month) - 1, d);
-        const dateStr = dateObj.toISOString().slice(0, 10);
+        const dateStr = `${year}-${month.padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
         const rec = recordMap[dateStr];
         result.push({
           id: rec?.id || null,
-          date: dateObj,
+          date: dateStr, // <-- always output as YYYY-MM-DD
           start_time: rec?.start_time ? rec.start_time.toISOString().slice(11, 16) : '----',
           lunch: rec?.lunch_start && rec?.lunch_end ? `${rec.lunch_start.toISOString().slice(11, 13)}-${rec.lunch_end.toISOString().slice(11, 13)}` : '----',
           end_time: rec?.end_time ? rec.end_time.toISOString().slice(11, 16) : '----',
@@ -358,7 +358,7 @@ export class AttendanceService {
     return { success: true, message: 'Absent days filled for all employees.' };
   }
 
-  async fillAbsentDaysForUserMonth(user_id: string, month: number, year: number) {
+  async fillAbsentDaysForUserMonth(user_id: string, month: number, year: number, project_id: string) {
     const daysInMonth = new Date(year, month, 0).getDate();
     const timeZone = 'Europe/Lisbon';
 
@@ -413,5 +413,51 @@ export class AttendanceService {
       }
     }
     return { success: true };
+  }
+
+  async fillAbsentForProjectMonth(project_id: string, month: number, year: number) {
+    // 1. Get all users assigned to the project
+    const assignees = await this.prisma.projectAssignee.findMany({
+      where: { projectId: project_id },
+      select: { userId: true },
+    });
+    const userIds = assignees.map(a => a.userId);
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    for (const user_id of userIds) {
+      // 2. Get all attendance dates for this user in the project for the month
+      const records = await this.prisma.attendance.findMany({
+        where: {
+          user_id,
+          project_id,
+          date: {
+            gte: new Date(year, month - 1, 1),
+            lte: new Date(year, month - 1, daysInMonth),
+          },
+          deleted_at: null,
+        },
+        select: { date: true },
+      });
+      const attendedDays = new Set(records.map(r => r.date.toISOString().slice(0, 10)));
+
+      // 3. For each day, if not attended, create ABSENT
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateObj = new Date(year, month - 1, d);
+        const dateStr = dateObj.toISOString().slice(0, 10);
+        if (!attendedDays.has(dateStr)) {
+          await this.prisma.attendance.create({
+            data: {
+              user_id,
+              project_id,
+              date: dateObj,
+              attendance_status: 'ABSENT',
+              hours: 0,
+            },
+          });
+        }
+      }
+    }
+    return { success: true, message: 'Absent days filled for all project assignees.' };
   }
 }

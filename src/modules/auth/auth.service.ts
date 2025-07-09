@@ -37,6 +37,10 @@ export class AuthService {
           type: true,
           gender: true,
           date_of_birth: true,
+          country: true,
+          state: true,
+          city: true,
+          zip_code: true,
           created_at: true,
         },
       });

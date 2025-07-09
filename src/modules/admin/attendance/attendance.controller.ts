@@ -26,8 +26,13 @@ export class AttendanceController {
 
   @Get('grid')
   @Roles(Role.ADMIN)
-  async findGrid(@Query('month') month: string, @Query('year') year: string, @Query('search') search?: string, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.attendanceService.findGrid({ month, year, search, page, limit });
+  async findGrid(@Query('month') month: string,
+    @Query('year') year: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string) {
+    const yearToUse = year || new Date().getFullYear().toString();
+    return this.attendanceService.findGrid({ month, year: yearToUse, search, page, limit });
   }
 
   @Get('employee/:user_id')
