@@ -75,6 +75,7 @@ export class ProjectService {
         select: {
           id: true,
           name: true,
+          start_date: true,
           end_date: true,
           priority: true,
           cost: true,
@@ -153,7 +154,11 @@ export class ProjectService {
       const assigneeData = await Promise.all(
         project.assignees.map(async (a) => {
           const agg = await this.prisma.attendance.aggregate({
-            where: { user_id: a.user.id, deleted_at: null },
+            where: {
+              user_id: a.user.id,
+              project_id: project.id, // <-- filter by project
+              deleted_at: null
+            },
             _sum: { hours: true },
           });
           const hours = Number(agg._sum.hours) || 0;

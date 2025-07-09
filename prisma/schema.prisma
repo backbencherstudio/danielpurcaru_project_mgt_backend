@@ -464,8 +464,9 @@ model Project {
   userId     String?
 
   // Many-to-many with User
-  assignees ProjectAssignee[]
-  user      User?             @relation(fields: [userId], references: [id])
+  assignees  ProjectAssignee[]
+  user       User?             @relation(fields: [userId], references: [id])
+  Attendance Attendance[]
 
   @@map("projects")
 }
@@ -492,6 +493,8 @@ model Attendance {
   address    String?
   user_id    String
   user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  project_id String?
+  project    Project?  @relation(fields: [project_id], references: [id])
 
   date              DateTime          @db.Date
   start_time        DateTime?

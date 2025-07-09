@@ -72,7 +72,7 @@ export class DashboardService {
         };
     }
 
-    async getAttendanceReport({ start, end }: { start: string, end: string }) {
+    async getAttendanceReport({ start, end, project_id }: { start: string, end: string, project_id?: string }) {
         // Validate dates
         const startDate = new Date(start);
         const endDate = new Date(end);
@@ -80,11 +80,15 @@ export class DashboardService {
             return { success: false, message: 'Invalid or missing start/end date.' };
         }
         // Get all attendance records in the date range
+        const where: any = {
+            date: { gte: startDate, lte: endDate },
+            deleted_at: null,
+        };
+        if (project_id) {
+            where.project_id = project_id;
+        }
         const records = await this.prisma.attendance.findMany({
-            where: {
-                date: { gte: startDate, lte: endDate },
-                deleted_at: null,
-            },
+            where,
             select: {
                 date: true,
                 attendance_status: true,
@@ -142,6 +146,15 @@ export class DashboardService {
         const perHour = Number(emp.hourly_rate) || 0;
         const earning = totalHours * perHour;
 
+        // Calculate total working days (unique days with attendance)
+        const workingDays = (
+            await this.prisma.attendance.findMany({
+                where: { user_id, deleted_at: null, attendance_status: 'PRESENT' },
+                distinct: ['date'],
+                select: { date: true },
+            })
+        ).length;
+
         return {
             success: true,
             data: {
@@ -150,6 +163,7 @@ export class DashboardService {
                 totalHours,
                 perHour,
                 earning,
+                days: workingDays,
             },
         };
     }
@@ -188,7 +202,13 @@ export class DashboardService {
             },
             select: { date: true, attendance_status: true },
         });
-        const recordMap = new Map(records.map(r => [r.date.toISOString().slice(0, 10), r.attendance_status]));
+
+        // Filter out dates from previous/next months
+        const currentMonthRecords = records.filter(record => {
+            const recordDate = new Date(record.date);
+            return recordDate.getMonth() === monthNum - 1 && recordDate.getFullYear() === yearNum;
+        });
+        const recordMap = new Map(currentMonthRecords.map(r => [r.date.toISOString().slice(0, 10), r.attendance_status]));
 
         // Build day list and count
         let complete = 0, unfinished = 0, totalWorkingDays = 0;
@@ -197,6 +217,13 @@ export class DashboardService {
             const utcDate = new Date(Date.UTC(yearNum, monthNum - 1, d));
             const dateObj = toZonedTime(utcDate, timeZone);
             const dateStr = dateObj.toISOString().slice(0, 10);
+
+            // Ensure we only include dates from the current month
+            const dateParts = dateStr.split('-');
+            const currentYear = parseInt(dateParts[0]);
+            const currentMonth = parseInt(dateParts[1]);
+
+            if (currentYear !== yearNum || currentMonth !== monthNum) continue;
 
             // Skip if Sunday or in academic calendar OFF_DAY/HOLIDAY
             if (dateObj.getDay() === 0 || skipDates.has(dateStr)) continue;

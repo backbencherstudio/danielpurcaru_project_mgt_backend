@@ -5,6 +5,9 @@ export class CreateAttendanceDto {
     @IsString()
     user_id: string;
 
+    @IsString()
+    project_id: string;
+
     @IsDateString()
     date: string;
 
