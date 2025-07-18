@@ -41,8 +41,6 @@ export class AcademicCalendarService {
           event_type: true,
           start_date: true,
           end_date: true,
-          all_day: true,
-          color: true,
         },
       });
       return { success: true, data };
@@ -70,8 +68,6 @@ export class AcademicCalendarService {
         event_type: true,
         start_date: true,
         end_date: true,
-        all_day: true,
-        color: true,
       }
     });
 
@@ -111,8 +107,6 @@ export class AcademicCalendarService {
           event_type: true,
           start_date: true,
           end_date: true,
-          all_day: true,
-          color: true,
         },
       });
       return { success: true, data };

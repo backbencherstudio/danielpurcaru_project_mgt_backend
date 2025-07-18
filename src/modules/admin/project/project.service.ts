@@ -83,6 +83,7 @@ export class ProjectService {
           status: true,
           assignees: {
             select: {
+              created_at: true,
               user: {
                 select: {
                   id: true,
@@ -133,6 +134,7 @@ export class ProjectService {
           cost: true,
           assignees: {
             select: {
+              created_at: true,
               user: {
                 select: {
                   id: true,

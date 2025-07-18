@@ -15,11 +15,12 @@ import { EmployeeQueryDto } from './dto/employee-query.dto';
 
 @Injectable()
 export class EmployeeService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) { }
+  constructor(private readonly prisma: PrismaService) {}
 
-  async create(createEmployeeDto: CreateEmployeeDto, file?: Express.Multer.File) {
+  async create(
+    createEmployeeDto: CreateEmployeeDto,
+    file?: Express.Multer.File,
+  ) {
     try {
       // Check if email already exists
       const existing = await this.prisma.user.findUnique({
@@ -30,7 +31,11 @@ export class EmployeeService {
       }
 
       // Generate base username
-      let baseUsername = (createEmployeeDto.first_name[0] + createEmployeeDto.last_name).toLowerCase().replace(/[^a-z0-9]/g, '');
+      let baseUsername = (
+        createEmployeeDto.first_name[0] + createEmployeeDto.last_name
+      )
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
       let username = baseUsername;
       let suffix = 1;
 
@@ -43,17 +48,23 @@ export class EmployeeService {
       createEmployeeDto.username = username;
 
       // Hash password
-      const hashedPassword = await bcrypt.hash(createEmployeeDto.password, appConfig().security.salt);
-
+      const hashedPassword = await bcrypt.hash(
+        createEmployeeDto.password,
+        appConfig().security.salt,
+      );
       // Handle file upload
       if (file) {
         const fileName = StringHelper.generateRandomFileName(file.originalname);
-        await SojebStorage.put(appConfig().storageUrl.avatar + fileName, file.buffer);
+        await SojebStorage.put(
+          appConfig().storageUrl.avatar + fileName,
+          file.buffer,
+        );
         createEmployeeDto.avatar = fileName;
       }
 
       // Create user
-      const fullName = createEmployeeDto.first_name + " " + createEmployeeDto.last_name;
+      const fullName =
+        createEmployeeDto.first_name + ' ' + createEmployeeDto.last_name;
       const result = await this.prisma.user.create({
         data: {
           name: fullName,
@@ -103,12 +114,7 @@ export class EmployeeService {
 
   async findAll(query: EmployeeQueryDto) {
     try {
-      const {
-        employee_role,
-        search,
-        page = '1',
-        limit = '10',
-      } = query;
+      const { employee_role, search, page = '1', limit = '10' } = query;
 
       const pageNumber = parseInt(page, 10) || 1;
       const pageSize = parseInt(limit, 10) || 10;
@@ -158,22 +164,28 @@ export class EmployeeService {
       });
 
       // For each employee, calculate recorded_hours and earning
-      const dataWithHours = await Promise.all(data.map(async (emp) => {
-        const agg = await this.prisma.attendance.aggregate({
-          where: { user_id: emp.id, deleted_at: null },
-          _sum: { hours: true },
-        });
-        const recorded_hours = Number(agg._sum.hours) || 0;
-        const earning = recorded_hours * Number(emp.hourly_rate || 0);
+      const dataWithHours = await Promise.all(
+        data.map(async (emp) => {
+          const agg = await this.prisma.attendance.aggregate({
+            where: { user_id: emp.id, deleted_at: null },
+            _sum: { hours: true },
+          });
+          const recorded_hours = Number(agg._sum.hours) || 0;
+          const earning = recorded_hours * Number(emp.hourly_rate || 0);
 
-        // Update the user with new recorded_hours and earning
-        await this.prisma.user.update({
-          where: { id: emp.id },
-          data: { recorded_hours, earning },
-        });
+          // Update the user with new recorded_hours and earning
+          await this.prisma.user.update({
+            where: { id: emp.id },
+            data: { recorded_hours, earning },
+          });
 
-        return FileUrlHelper.addAvatarUrl({ ...emp, recorded_hours, earning });
-      }));
+          return FileUrlHelper.addAvatarUrl({
+            ...emp,
+            recorded_hours,
+            earning,
+          });
+        }),
+      );
 
       return {
         success: true,
@@ -213,18 +225,35 @@ export class EmployeeService {
       });
       const recorded_hours = Number(agg._sum.hours) || 0;
       const earning = recorded_hours * Number(emp.hourly_rate || 0);
-      const dataWithUrl = FileUrlHelper.addAvatarUrl({ ...emp, recorded_hours, earning });
+      const dataWithUrl = FileUrlHelper.addAvatarUrl({
+        ...emp,
+        recorded_hours,
+        earning,
+      });
       return { success: true, data: dataWithUrl };
     } catch (error) {
       return { success: false, message: error.message };
     }
   }
 
-  async update(id: string, updateEmployeeDto: UpdateEmployeeDto, file?: Express.Multer.File) {
+  async update(
+    id: string,
+    updateEmployeeDto: UpdateEmployeeDto,
+    file?: Express.Multer.File,
+  ) {
     try {
+      if (updateEmployeeDto.password) {
+        updateEmployeeDto.password = await bcrypt.hash(
+          updateEmployeeDto.password,
+          appConfig().security.salt,
+        );
+      }
       if (file) {
         const fileName = StringHelper.generateRandomFileName(file.originalname);
-        await SojebStorage.put(appConfig().storageUrl.avatar + fileName, file.buffer);
+        await SojebStorage.put(
+          appConfig().storageUrl.avatar + fileName,
+          file.buffer,
+        );
         updateEmployeeDto.avatar = fileName;
       }
       const result = await this.prisma.user.update({

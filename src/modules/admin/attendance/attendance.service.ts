@@ -3,6 +3,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 import { toZonedTime } from 'date-fns-tz';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class AttendanceService {
@@ -10,61 +11,125 @@ export class AttendanceService {
 
   async create(dto: CreateAttendanceDto) {
     try {
-      // Only check for duplicate if status is PRESENT (or default)
       const status = dto.attendance_status || 'PRESENT';
-      if (status === 'PRESENT') {
-        const exists = await this.prisma.attendance.findFirst({
-          where: {
-            user_id: dto.user_id,
-            date: new Date(dto.date),
-            attendance_status: 'PRESENT',
-            deleted_at: null,
-          },
-        });
-        if (exists) {
-          return { success: false, message: 'Attendance already marked as PRESENT for this user and date.' };
-        }
-      }
+      const date = new Date(dto.date);
 
-      // Parse times
-      const start_time = dto.start_time ? new Date(dto.start_time) : undefined;
-      const end_time = dto.end_time ? new Date(dto.end_time) : undefined;
-      const lunch_start = dto.lunch_start ? new Date(dto.lunch_start) : undefined;
-      const lunch_end = dto.lunch_end ? new Date(dto.lunch_end) : undefined;
-
-      // Calculate hours if possible
-      let hours = dto.hours;
-      if (start_time && end_time) {
-        hours = (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
-        if (lunch_start && lunch_end) {
-          hours -= (lunch_end.getTime() - lunch_start.getTime()) / (1000 * 60 * 60);
-        }
-        hours = Math.max(0, hours);
-      }
-
-      const attendance = await this.prisma.attendance.create({
-        data: {
+      // Check for existing attendance (either PRESENT or ABSENT)
+      const existing = await this.prisma.attendance.findFirst({
+        where: {
           user_id: dto.user_id,
-          project_id: dto.project_id,
-          date: new Date(dto.date),
-          start_time,
-          lunch_start,
-          lunch_end,
-          end_time,
-          hours,
-          attendance_status: dto.attendance_status,
-          notes: dto.notes,
-          address: dto.address,
+          date,
+          deleted_at: null,
         },
       });
 
-      // After creating attendance, fill ABSENT days for this user for the month
-      const dateObj = new Date(dto.date);
-      const month = dateObj.getMonth() + 1; // JS months are 0-based
-      const year = dateObj.getFullYear();
-      await this.fillAbsentDaysForUserMonth(dto.user_id, month, year, dto.project_id);
+      if (status === 'PRESENT') {
+        if (existing) {
+          // If existing is ABSENT, update it to PRESENT
+          if (existing.attendance_status === 'ABSENT') {
+            const start_time = dto.start_time ? new Date(dto.start_time) : undefined;
+            const end_time = dto.end_time ? new Date(dto.end_time) : undefined;
+            const lunch_start = dto.lunch_start ? new Date(dto.lunch_start) : undefined;
+            const lunch_end = dto.lunch_end ? new Date(dto.lunch_end) : undefined;
+            let hours = dto.hours;
+            if (start_time && end_time) {
+              hours = (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
+              if (lunch_start && lunch_end) {
+                hours -= (lunch_end.getTime() - lunch_start.getTime()) / (1000 * 60 * 60);
+              }
+              hours = Math.max(0, hours);
+            }
+            const updated = await this.prisma.attendance.update({
+              where: { id: existing.id },
+              data: {
+                attendance_status: 'PRESENT',
+                start_time,
+                end_time,
+                lunch_start,
+                lunch_end,
+                hours,
+                notes: dto.notes,
+                address: dto.address,
+              },
+            });
+            return { success: true, data: updated, message: 'Attendance updated from ABSENT to PRESENT.' };
+          }
+          // If already PRESENT, prevent duplicate
+          return { success: false, message: 'Attendance already marked as PRESENT for this user and date.' };
+        }
+        // No existing record, create new PRESENT
+        // Only check for duplicate if status is PRESENT (or default)
+        if (status === 'PRESENT') {
+          const exists = await this.prisma.attendance.findFirst({
+            where: {
+              user_id: dto.user_id,
+              date: new Date(dto.date),
+              attendance_status: 'PRESENT',
+              deleted_at: null,
+            },
+          });
+          if (exists) {
+            return { success: false, message: 'Attendance already marked as PRESENT for this user and date.' };
+          }
+        }
 
-      return { success: true, data: attendance };
+        // Parse times
+        const start_time = dto.start_time ? new Date(dto.start_time) : undefined;
+        const end_time = dto.end_time ? new Date(dto.end_time) : undefined;
+        const lunch_start = dto.lunch_start ? new Date(dto.lunch_start) : undefined;
+        const lunch_end = dto.lunch_end ? new Date(dto.lunch_end) : undefined;
+
+        // Calculate hours if possible
+        let hours = dto.hours;
+        if (start_time && end_time) {
+          hours = (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
+          if (lunch_start && lunch_end) {
+            hours -= (lunch_end.getTime() - lunch_start.getTime()) / (1000 * 60 * 60);
+          }
+          hours = Math.max(0, hours);
+        }
+
+        const attendance = await this.prisma.attendance.create({
+          data: {
+            user_id: dto.user_id,
+            project_id: dto.project_id,
+            date: new Date(dto.date),
+            start_time,
+            lunch_start,
+            lunch_end,
+            end_time,
+            hours,
+            attendance_status: dto.attendance_status,
+            notes: dto.notes,
+            address: dto.address,
+          },
+        });
+
+        // After creating attendance, fill ABSENT days for this user for the month
+        const dateObj = new Date(dto.date);
+        const month = dateObj.getMonth() + 1; // JS months are 0-based
+        const year = dateObj.getFullYear();
+
+        return { success: true, data: attendance };
+      } else {
+        // If status is ABSENT and already exists, do nothing or return
+        if (existing && existing.attendance_status === 'ABSENT') {
+          return { success: false, message: 'Attendance already marked as ABSENT for this user and date.' };
+        }
+        // Otherwise, create new ABSENT record
+        const attendance = await this.prisma.attendance.create({
+          data: {
+            user_id: dto.user_id,
+            project_id: dto.project_id,
+            date: new Date(dto.date),
+            attendance_status: dto.attendance_status,
+            hours: 0,
+            notes: dto.notes,
+            address: dto.address,
+          },
+        });
+        return { success: true, data: attendance };
+      }
     } catch (error) {
       return { success: false, message: error.message };
     }
@@ -72,6 +137,7 @@ export class AttendanceService {
 
   async findGrid({ month, year, search, page = '1', limit = '10' }: { month: string, year: string, search?: string, page?: string, limit?: string }) {
     try {
+
       if (!month || !year || isNaN(Number(month)) || isNaN(Number(year))) {
         return { success: false, message: 'Invalid or missing month/year parameter.' };
       }
@@ -128,8 +194,15 @@ export class AttendanceService {
           days[dateStr] = null;
         }
         attendanceRecords.filter(a => a.user_id === user.id).forEach(a => {
-          const dateStr = a.date.toISOString().slice(0, 10);
-          days[dateStr] = { id: a.id, hours: Number(a.hours) };
+          const dateObj = new Date(a.date);
+          // Only include if the date is in the current month and year
+          if (
+            dateObj.getFullYear() === Number(year) &&
+            dateObj.getMonth() === Number(month) - 1
+          ) {
+            const dateStr = dateObj.toISOString().slice(0, 10);
+            days[dateStr] = { id: a.id, hours: Number(a.hours) };
+          }
         });
         return { user, days };
       });
@@ -370,7 +443,7 @@ export class AttendanceService {
           gte: new Date(year, month - 1, 1),
           lte: new Date(year, month - 1, daysInMonth),
         },
-        event_type: { in: ['OFF_DAY', 'HOLIDAY', 'EVENT'] },
+        event_type: { in: ['OFF_DAY', 'HOLIDAY', 'EXAM_DAY', 'SEMINAR'] },
       },
       select: { start_date: true },
     });
@@ -415,49 +488,52 @@ export class AttendanceService {
     return { success: true };
   }
 
-  async fillAbsentForProjectMonth(project_id: string, month: number, year: number) {
-    // 1. Get all users assigned to the project
-    const assignees = await this.prisma.projectAssignee.findMany({
-      where: { projectId: project_id },
-      select: { userId: true },
+  /**
+   * Checks attendance for all employees for a given date.
+   * If an employee has no attendance record, marks them as ABSENT.
+   * @param dateStr - Date string in YYYY-MM-DD format
+   */
+  async checkAndFillDailyAbsence(dateStr: string) {
+    const date = new Date(dateStr);
+    // 1. Get all active employees
+    const employees = await this.prisma.user.findMany({
+      where: { type: 'employee', deleted_at: null },
+      select: { id: true },
     });
-    const userIds = assignees.map(a => a.userId);
-
-    const daysInMonth = new Date(year, month, 0).getDate();
-
-    for (const user_id of userIds) {
-      // 2. Get all attendance dates for this user in the project for the month
-      const records = await this.prisma.attendance.findMany({
-        where: {
-          user_id,
-          project_id,
-          date: {
-            gte: new Date(year, month - 1, 1),
-            lte: new Date(year, month - 1, daysInMonth),
+    // 2. Get all attendance records for this date
+    const attendanceRecords = await this.prisma.attendance.findMany({
+      where: {
+        date,
+        deleted_at: null,
+      },
+      select: { user_id: true },
+    });
+    const attendedUserIds = new Set(attendanceRecords.map(r => r.user_id));
+    // 3. For each employee, if no attendance, create ABSENT
+    for (const emp of employees) {
+      if (!attendedUserIds.has(emp.id)) {
+        await this.prisma.attendance.create({
+          data: {
+            user_id: emp.id,
+            date,
+            attendance_status: 'ABSENT',
+            hours: 0,
           },
-          deleted_at: null,
-        },
-        select: { date: true },
-      });
-      const attendedDays = new Set(records.map(r => r.date.toISOString().slice(0, 10)));
-
-      // 3. For each day, if not attended, create ABSENT
-      for (let d = 1; d <= daysInMonth; d++) {
-        const dateObj = new Date(year, month - 1, d);
-        const dateStr = dateObj.toISOString().slice(0, 10);
-        if (!attendedDays.has(dateStr)) {
-          await this.prisma.attendance.create({
-            data: {
-              user_id,
-              project_id,
-              date: dateObj,
-              attendance_status: 'ABSENT',
-              hours: 0,
-            },
-          });
-        }
+        });
       }
     }
-    return { success: true, message: 'Absent days filled for all project assignees.' };
+    return { success: true, message: 'All absences filled for date: ' + dateStr };
   }
+
+  //?@Cron('0 17 * * *') // 5pm
+  @Cron('0 10 * * *')  // 10 am
+  async autoFillDailyAbsence() {
+    const today = new Date();
+    // Format as YYYY-MM-DD
+    const dateStr = today.toISOString().slice(0, 10);
+    await this.checkAndFillDailyAbsence(dateStr);
+    // Optionally log or handle result
+  }
+
+
 }
