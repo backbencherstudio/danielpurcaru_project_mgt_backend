@@ -1,12 +1,10 @@
 import { IsString, IsOptional, IsDateString, IsEnum, IsBoolean, IsInt } from 'class-validator';
 
 export enum CalendarEventType {
+    OFF_DAY = 'OFF_DAY',
     HOLIDAY = 'HOLIDAY',
-    MEETING = 'MEETING',
-    DEADLINE = 'DEADLINE',
-    TRAINING = 'TRAINING',
-    EVENT = 'EVENT',
-    OFF_DAY = 'OFF_DAY'
+    SEMINAR = 'SEMINAR',
+    EXAM_DAY = 'EXAM_DAY',
 }
 
 export class CreateAcademicCalendarDto {
@@ -24,7 +22,7 @@ export class CreateAcademicCalendarDto {
 
     @IsOptional()
     @IsEnum(CalendarEventType)
-    event_type?: CalendarEventType;
+    event_type: CalendarEventType;
 
     @IsOptional()
     @IsDateString()

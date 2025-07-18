@@ -94,7 +94,6 @@ export class DashboardService {
                 attendance_status: true,
             },
         });
-
         // Group by date and status
         const report: { [date: string]: { [status: string]: number } } = {};
         records.forEach(r => {
