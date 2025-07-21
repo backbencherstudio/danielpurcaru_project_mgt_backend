@@ -9,7 +9,7 @@ import { Role } from 'src/common/guard/role/role.enum';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@Roles(Role.ADMIN,Role.EMPLOYEE)
 @Controller('project')
 export class ProjectController {
   constructor(private readonly projectService: ProjectService) { }
