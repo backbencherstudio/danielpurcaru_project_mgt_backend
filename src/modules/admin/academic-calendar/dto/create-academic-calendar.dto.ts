@@ -47,4 +47,13 @@ export class CreateAcademicCalendarDto {
     @IsOptional()
     @IsString()
     color?: string;
+
+    // Google Calendar fields
+    @IsOptional()
+    @IsString()
+    google_event_id?: string;
+
+    @IsOptional()
+    @IsBoolean()
+    synced?: boolean;
 }

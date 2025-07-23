@@ -52,6 +52,8 @@ export default () => ({
       app_id: process.env.GOOGLE_APP_ID,
       app_secret: process.env.GOOGLE_APP_SECRET,
       callback: process.env.GOOGLE_CALLBACK_URL,
+      access_token: process.env.GOOGLE_ACCESS_TOKEN,
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
     },
   },
 

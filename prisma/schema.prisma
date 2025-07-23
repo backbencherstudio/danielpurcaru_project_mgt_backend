@@ -529,6 +529,10 @@ model AcademicCalendar {
   organizer String? @db.VarChar(255)
   color     String? @db.VarChar(7) // Hex color code
 
+  // Google Calendar integration fields
+  google_event_id String?  @unique
+  synced          Boolean? @default(false)
+
   @@map("academic_calendars")
 }
 
