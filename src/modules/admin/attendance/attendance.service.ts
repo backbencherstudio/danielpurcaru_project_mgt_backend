@@ -229,6 +229,9 @@ export class AttendanceService {
       const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
       const startDate = new Date(Number(year), Number(month) - 1, 1);
       const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
+      // Get user hourly rate
+      const user = await this.prisma.user.findUnique({ where: { id: user_id }, select: { hourly_rate: true } });
+      const hourlyRate = user?.hourly_rate ? Number(user.hourly_rate) : 0;
       // Get all attendance records for this user in the month
       const records = await this.prisma.attendance.findMany({
         where: {
@@ -257,13 +260,16 @@ export class AttendanceService {
       for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${month.padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
         const rec = recordMap[dateStr];
+        const hours = rec?.hours ? Number(rec.hours) : 0;
+        const earning = hours * hourlyRate;
         result.push({
           id: rec?.id || null,
           date: dateStr, // <-- always output as YYYY-MM-DD
           start_time: rec?.start_time ? rec.start_time.toISOString().slice(11, 16) : '----',
           lunch: rec?.lunch_start && rec?.lunch_end ? `${rec.lunch_start.toISOString().slice(11, 13)}-${rec.lunch_end.toISOString().slice(11, 13)}` : '----',
           end_time: rec?.end_time ? rec.end_time.toISOString().slice(11, 16) : '----',
-          total: rec?.hours ? `${Number(rec.hours).toFixed(1)} hrs` : 'No Record',
+          total: rec?.hours ? `${hours.toFixed(1)} hrs` : 'No Record',
+          earning: hours ? `${earning.toFixed(2)}` : '0.00',
         });
       }
       return { success: true, data: result };
