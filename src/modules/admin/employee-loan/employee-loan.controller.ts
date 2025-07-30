@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, Patch, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Patch, Delete, UseGuards, Query } from '@nestjs/common';
 import { EmployeeLoanService } from './employee-loan.service';
 import { CreateEmployeeLoanDto } from './dto/create-employee-loan.dto';
 import { UpdateEmployeeLoanDto } from './dto/update-employee-loan.dto';
@@ -21,8 +21,8 @@ export class EmployeeLoanController {
 
   @Get()
   @Roles(Role.ADMIN)
-  findAllLoans() {
-    return this.employeeLoanService.findAllLoans();
+  findAllLoans(@Query() query: { page?: string, limit?: string, search?: string, loan_status?: string }) {
+    return this.employeeLoanService.findAllLoans(query);
   }
 
   // Employee: Get all their loans

@@ -49,11 +49,39 @@ export class EmployeeLoanService {
         }
     }
 
-    async findAllLoans() {
+    async findAllLoans(query: { page?: string, limit?: string, search?: string, loan_status?: string }) {
         try {
+            const { search, loan_status, page = '1', limit = '10' } = query;
+
+            const pageNumber = parseInt(page, 10) || 1;
+            const pageSize = parseInt(limit, 10) || 10;
+            const skip = (pageNumber - 1) * pageSize;
+
+            // Build dynamic where clause
+            const where: any = { deleted_at: null };
+
+            if (loan_status) {
+                where.loan_status = loan_status;
+            }
+
+            if (search) {
+                where.OR = [
+                    { loan_purpose: { contains: search, mode: 'insensitive' } },
+                    { notes: { contains: search, mode: 'insensitive' } },
+                    { user: { name: { contains: search, mode: 'insensitive' } } },
+                    { user: { email: { contains: search, mode: 'insensitive' } } },
+                ];
+            }
+
+            // Get total count for pagination
+            const total = await this.prisma.employeeLoan.count({ where });
+
+            // Get paginated data
             const loans = await this.prisma.employeeLoan.findMany({
-                where: { deleted_at: null },
+                where,
                 orderBy: { created_at: 'desc' },
+                skip,
+                take: pageSize,
                 select: {
                     id: true,
                     user_id: true,
@@ -71,11 +99,22 @@ export class EmployeeLoanService {
                     }
                 },
             });
+
             const loansWithAvatar = loans.map(loan => ({
                 ...loan,
                 user: loan.user ? FileUrlHelper.addAvatarUrl(loan.user) : null,
             }));
-            return { success: true, data: loansWithAvatar };
+
+            return {
+                success: true,
+                meta: {
+                    total,
+                    page: pageNumber,
+                    limit: pageSize,
+                    totalPages: Math.ceil(total / pageSize),
+                },
+                data: loansWithAvatar,
+            };
         } catch (error) {
             return { success: false, message: error.message };
         }
