@@ -4,6 +4,7 @@ import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 import { toZonedTime } from 'date-fns-tz';
 import { Cron } from '@nestjs/schedule';
+import { AttendanceStatus } from './dto/attendance-status.enum';
 
 @Injectable()
 export class AttendanceService {
@@ -183,12 +184,13 @@ export class AttendanceService {
           user_id: true,
           date: true,
           hours: true,
+          attendance_status: true,
         },
       });
       // 3. Build grid: for each user, map days of month to { id, hours } or null
       const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
       const grid = users.map(user => {
-        const days: { [key: string]: { id: string, hours: number } | null } = {};
+        const days: { [key: string]: { id: string, hours: number, attendance_status: AttendanceStatus } | null } = {};
         for (let d = 1; d <= daysInMonth; d++) {
           const dateStr = `${year}-${month.padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
           days[dateStr] = null;
@@ -201,7 +203,7 @@ export class AttendanceService {
             dateObj.getMonth() === Number(month) - 1
           ) {
             const dateStr = dateObj.toISOString().slice(0, 10);
-            days[dateStr] = { id: a.id, hours: Number(a.hours) };
+            days[dateStr] = { id: a.id, hours: Number(a.hours), attendance_status: a.attendance_status as AttendanceStatus };
           }
         });
         return { user, days };
@@ -357,6 +359,14 @@ export class AttendanceService {
 
   async update(id: string, dto: UpdateAttendanceDto) {
     try {
+
+      // hours
+      if (dto.hours > 0) {
+        dto.attendance_status = AttendanceStatus.PRESENT;
+      } else {
+        dto.attendance_status = AttendanceStatus.ABSENT;
+      }
+      
       const data = await this.prisma.attendance.update({
         where: { id },
         data: {
