@@ -12,6 +12,11 @@ export class AcademicCalendarService {
   ) { }
 
   async createEvent(dto: CreateAcademicCalendarDto) {
+
+    if (!dto.end_date) {
+      dto.end_date = dto.start_date;
+    }
+
     // 1. Create event in Google Calendar
     const googleEvent = await this.googleCalendar.createEvent('primary', {
       summary: dto.title,
