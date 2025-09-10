@@ -330,17 +330,16 @@ export class AuthService {
       });
 
       // Send verification email with token
-      // await this.mailService.sendVerificationLink({
-      //   email,
-      //   name: email,
-      //   token: token.token,
-      //   type: type,
-      // });
+      await this.mailService.sendVerificationLink({
+        email,
+        name: email,
+        token: token.token,
+        type: type,
+      });
 
       return {
         success: true,
-        //  message: 'We have sent a verification link to your email',
-        message: 'registration successful',
+        message: 'We have sent a verification link to your email',
       };
     } catch (error) {
       return {

@@ -4,18 +4,18 @@ import { AuthService } from 'src/modules/auth/auth.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import * as bcrypt from 'bcrypt';
-import { StripePayment } from 'src/common/lib/Payment/stripe/StripePayment';
-import { UcodeRepository } from 'src/common/repository/ucode/ucode.repository';
-import { createDecipheriv } from 'crypto';
 import appConfig from 'src/config/app.config';
 import { StringHelper } from 'src/common/helper/string.helper';
 import { SojebStorage } from 'src/common/lib/Disk/SojebStorage';
 import { FileUrlHelper } from 'src/common/helper/file-url.helper';
 import { EmployeeQueryDto } from './dto/employee-query.dto';
+import { MailService } from 'src/mail/mail.service';
 
 @Injectable()
 export class EmployeeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService,
+    private readonly mailService: MailService,
+  ) { }
 
   async create(
     createEmployeeDto: CreateEmployeeDto,
@@ -83,29 +83,15 @@ export class EmployeeService {
         },
       });
 
-      // // create stripe customer account
-      // const stripeCustomer = await StripePayment.createCustomer({
-      //   user_id: result.id,
-      //   email: result.email,
-      //   name: result.name
-      // });
-
-      // if (stripeCustomer) {
-      //   await this.prisma.user.update({
-      //     where: {
-      //       id: result.id,
-      //     },
-      //     data: {
-      //       billing_id: stripeCustomer.id,
-      //     },
-      //   });
-      // }
-
-      // Generate verification token
-      await UcodeRepository.createVerificationToken({
-        userId: result.id,
+      // Send employee credentials via email
+    await this.mailService.sendEmployeeCredentials({
         email: result.email,
+        name: result.name,
+        username: result.username,
+        password: createEmployeeDto.password, // Send original password
       });
+      
+     
       return { success: true, data: result };
     } catch (error) {
       return { success: false, message: error.message };
