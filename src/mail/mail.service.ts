@@ -9,7 +9,7 @@ export class MailService {
   constructor(
     @InjectQueue('mail-queue') private queue: Queue,
     private mailerService: MailerService,
-  ) {}
+  ) { }
 
   async sendMemberInvitation({ user, member, url }) {
     try {
@@ -74,6 +74,36 @@ export class MailService {
           verificationLink,
         },
       });
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  async sendEmployeeCredentials(params: {
+    email: string;
+    name: string;
+    username: string;
+    password: string;
+  }) {
+
+    try {
+      const from = `${process.env.APP_NAME} <${appConfig().mail.from}>`;
+      const subject = 'Welcome to the Company - Your Login Credentials';
+
+      // add to queue
+      await this.queue.add('sendEmployeeCredentials', {
+        to: params.email,
+        from: from,
+        subject: subject,
+        template: 'employee-credentials',
+        context: {
+          name: params.name,
+          email: params.email,
+          username: params.username,
+          password: params.password,
+        },
+      });
+
     } catch (error) {
       console.log(error);
     }
