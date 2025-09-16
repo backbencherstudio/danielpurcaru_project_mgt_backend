@@ -22,7 +22,16 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.enableCors();
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+      },
+    },
+  }));
   // Enable it, if special charactrers not encoding perfectly
   // app.use((req, res, next) => {
   //   // Only force content-type for specific API routes, not Swagger or assets
@@ -74,6 +83,6 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
   // end swagger
 
-  await app.listen(process.env.PORT ?? 4000, '0.0.0.0');
+  await app.listen(process.env.PORT ?? 5000, '0.0.0.0');
 }
 bootstrap();
