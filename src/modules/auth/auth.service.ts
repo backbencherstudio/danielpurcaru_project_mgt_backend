@@ -185,7 +185,8 @@ export class AuthService {
       where: {
         OR: [
           { username: identifier },
-          { email: identifier }
+          { email: identifier },
+          { phone_number: identifier }
         ]
       },
     });
@@ -246,6 +247,7 @@ export class AuthService {
     email,
     password,
     type,
+    phone_number,
   }: {
     name: string;
     first_name: string;
@@ -253,6 +255,7 @@ export class AuthService {
     email: string;
     password: string;
     type?: string;
+    phone_number?: string;
   }) {
     try {
       // Check if email already exist
@@ -275,6 +278,7 @@ export class AuthService {
         email: email,
         password: password,
         type: type,
+        phone_number: phone_number,
       });
 
       if (user == null && user.success == false) {

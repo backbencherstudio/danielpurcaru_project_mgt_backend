@@ -58,6 +58,7 @@ export class AuthController {
       const email = data.email;
       const password = data.password;
       const type = data.type;
+      const phone_number = data.phone_number;
 
 
       if (!email) {
@@ -77,6 +78,7 @@ export class AuthController {
         email: email,
         password: password,
         type: type,
+        phone_number: phone_number,
       });
 
       return response;
