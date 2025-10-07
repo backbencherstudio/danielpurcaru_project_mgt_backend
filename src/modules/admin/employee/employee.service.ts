@@ -30,26 +30,21 @@ export class EmployeeService {
         return { success: false, message: 'Email already exists' };
       }
 
-      // Generate base username
-      let baseUsername = (
-        createEmployeeDto.first_name[0] + createEmployeeDto.last_name
-      )
+      // Generate username from email (part before @)
+      const username = createEmployeeDto.email
+        .split('@')[0]
         .toLowerCase()
-        .replace(/[^a-z0-9]/g, '');
-      let username = baseUsername;
-      let suffix = 1;
-
-      // Ensure uniqueness
-      while (await this.prisma.user.findUnique({ where: { username } })) {
-        username = `${baseUsername}${suffix++}`;
-      }
+        .replace(/[^a-z0-9._-]/g, '');
 
       // Add to createEmployeeDto
       createEmployeeDto.username = username;
 
+      // Use password if provided, otherwise use physical_number as password
+      const passwordToUse = createEmployeeDto.password || createEmployeeDto.physical_number;
+
       // Hash password
       const hashedPassword = await bcrypt.hash(
-        createEmployeeDto.password,
+        passwordToUse,
         appConfig().security.salt,
       );
       // Handle file upload
@@ -84,14 +79,14 @@ export class EmployeeService {
       });
 
       // Send employee credentials via email
-    await this.mailService.sendEmployeeCredentials({
+      await this.mailService.sendEmployeeCredentials({
         email: result.email,
         name: result.name,
         username: result.username,
-        password: createEmployeeDto.password, // Send original password
+        password: passwordToUse, // Send the password that was actually used
       });
-      
-     
+
+
       return { success: true, data: result };
     } catch (error) {
       return { success: false, message: error.message };
@@ -143,7 +138,7 @@ export class EmployeeService {
           hourly_rate: true,
         },
         orderBy: {
-          first_name: 'asc',
+         created_at: 'desc',
         },
         skip,
         take: pageSize,
