@@ -23,7 +23,6 @@ export class CreateEmployeeDto {
     email: string;
 
     @IsString()
-    @MinLength(6)
     @IsOptional()
     password: string;
 
