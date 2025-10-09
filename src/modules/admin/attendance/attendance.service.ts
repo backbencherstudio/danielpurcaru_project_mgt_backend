@@ -12,6 +12,26 @@ export class AttendanceService {
 
   async create(dto: CreateAttendanceDto) {
     try {
+
+
+      const project = await this.prisma.project.findUnique({
+        where: { id: dto.project_id },
+      });
+      if (!project) {
+        return { success: false, message: 'Project not found.' };
+      }
+
+      // check if user is assigned to project
+      const user = await this.prisma.projectAssignee.findFirst({
+        where: { projectId: dto.project_id, userId: dto.user_id },
+      });
+
+      if (!user) {
+        return { success: false, message: 'User not assigned to project.' };
+      }
+
+
+
       const status = dto.attendance_status || 'PRESENT';
       const date = new Date(dto.date);
 
@@ -53,6 +73,10 @@ export class AttendanceService {
                 address: dto.address,
               },
             });
+
+            // Update project assignee total hours and cost
+            await this.updateProjectAssigneeTotals(dto.project_id, dto.user_id);
+
             return { success: true, data: updated, message: 'Attendance updated from ABSENT to PRESENT.' };
           }
           // If already PRESENT, prevent duplicate
@@ -106,6 +130,9 @@ export class AttendanceService {
           },
         });
 
+        // Update project assignee total hours and cost
+        await this.updateProjectAssigneeTotals(dto.project_id, dto.user_id);
+
         // After creating attendance, fill ABSENT days for this user for the month
         const dateObj = new Date(dto.date);
         const month = dateObj.getMonth() + 1; // JS months are 0-based
@@ -129,6 +156,10 @@ export class AttendanceService {
             address: dto.address,
           },
         });
+
+        // Update project assignee total hours and cost (0 hours, 0 cost for ABSENT)
+        await this.updateProjectAssigneeTotals(dto.project_id, dto.user_id);
+
         return { success: true, data: attendance };
       }
     } catch (error) {
@@ -359,6 +390,15 @@ export class AttendanceService {
 
   async update(id: string, dto: UpdateAttendanceDto) {
     try {
+      // Get the existing attendance record to get project_id and user_id
+      const existingAttendance = await this.prisma.attendance.findUnique({
+        where: { id },
+        select: { project_id: true, user_id: true }
+      });
+
+      if (!existingAttendance) {
+        return { success: false, message: 'Attendance record not found' };
+      }
 
       // hours
       if (dto.hours > 0) {
@@ -366,7 +406,7 @@ export class AttendanceService {
       } else {
         dto.attendance_status = AttendanceStatus.ABSENT;
       }
-      
+
       const data = await this.prisma.attendance.update({
         where: { id },
         data: {
@@ -389,6 +429,10 @@ export class AttendanceService {
           },
         },
       });
+
+      // Update project assignee total hours and cost
+      await this.updateProjectAssigneeTotals(existingAttendance.project_id, existingAttendance.user_id);
+
       return { success: true, data };
     } catch (error) {
       return { success: false, message: error.message };
@@ -397,7 +441,21 @@ export class AttendanceService {
 
   async remove(id: string) {
     try {
+      // Get the attendance record before deleting to get project_id and user_id
+      const attendance = await this.prisma.attendance.findUnique({
+        where: { id },
+        select: { project_id: true, user_id: true }
+      });
+
+      if (!attendance) {
+        return { success: false, message: 'Attendance record not found' };
+      }
+
       const data = await this.prisma.attendance.delete({ where: { id } });
+
+      // Update project assignee total hours and cost after deletion
+      await this.updateProjectAssigneeTotals(attendance.project_id, attendance.user_id);
+
       return { success: true, data };
     } catch (error) {
       return { success: false, message: error.message };
@@ -551,5 +609,49 @@ export class AttendanceService {
     // Optionally log or handle result
   }
 
+  /**
+   * Updates the total_hours and total_cost for a project assignee
+   * @param projectId - The project ID
+   * @param userId - The user ID
+   */
+  private async updateProjectAssigneeTotals(projectId: string, userId: string) {
+    try {
+      // Get user's hourly rate
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { hourly_rate: true }
+      });
+
+      const hourlyRate = user?.hourly_rate ? Number(user.hourly_rate) : 0;
+
+      // Calculate total hours for this user in this project
+      const attendanceAgg = await this.prisma.attendance.aggregate({
+        where: {
+          user_id: userId,
+          project_id: projectId,
+          deleted_at: null
+        },
+        _sum: { hours: true }
+      });
+
+      const totalHours = Number(attendanceAgg._sum.hours) || 0;
+      const totalCost = totalHours * hourlyRate;
+
+      // Update the project assignee record
+      await this.prisma.projectAssignee.updateMany({
+        where: {
+          projectId,
+          userId
+        },
+        data: {
+          total_hours: totalHours,
+          total_cost: totalCost
+        }
+      });
+    } catch (error) {
+      console.error('Error updating project assignee totals:', error);
+      // Don't throw error to avoid breaking attendance creation
+    }
+  }
 
 }
