@@ -477,6 +477,9 @@ model ProjectAssignee {
   userId     String
   created_at DateTime @default(now())
 
+  total_hours Decimal? @default(0)
+  total_cost  Decimal? @default(0)
+
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
