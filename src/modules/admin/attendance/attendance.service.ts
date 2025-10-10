@@ -213,6 +213,7 @@ export class AttendanceService {
         select: {
           id: true,
           user_id: true,
+          project_id: true,
           date: true,
           hours: true,
           attendance_status: true,
@@ -221,7 +222,7 @@ export class AttendanceService {
       // 3. Build grid: for each user, map days of month to { id, hours } or null
       const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
       const grid = users.map(user => {
-        const days: { [key: string]: { id: string, hours: number, attendance_status: AttendanceStatus } | null } = {};
+        const days: { [key: string]: { id: string, hours: number, attendance_status: AttendanceStatus, project_id: string } | null } = {};
         for (let d = 1; d <= daysInMonth; d++) {
           const dateStr = `${year}-${month.padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
           days[dateStr] = null;
@@ -234,7 +235,7 @@ export class AttendanceService {
             dateObj.getMonth() === Number(month) - 1
           ) {
             const dateStr = dateObj.toISOString().slice(0, 10);
-            days[dateStr] = { id: a.id, hours: Number(a.hours), attendance_status: a.attendance_status as AttendanceStatus };
+            days[dateStr] = { id: a.id, hours: Number(a.hours), attendance_status: a.attendance_status as AttendanceStatus, project_id: a.project_id };
           }
         });
         return { user, days };
