@@ -400,6 +400,16 @@ export class AttendanceService {
         return { success: false, message: 'Attendance record not found' };
       }
 
+
+      // check if user is assigned to project
+      const user = await this.prisma.projectAssignee.findFirst({
+        where: { projectId: existingAttendance.project_id, userId: existingAttendance.user_id },
+      });
+
+      if (!user) {
+        return { success: false, message: 'User not assigned to project.' };
+      }
+
       // hours
       if (dto.hours > 0) {
         dto.attendance_status = AttendanceStatus.PRESENT;
