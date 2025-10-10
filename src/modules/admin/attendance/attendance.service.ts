@@ -403,7 +403,7 @@ export class AttendanceService {
 
       // check if user is assigned to project
       const user = await this.prisma.projectAssignee.findFirst({
-        where: { projectId: existingAttendance.project_id, userId: existingAttendance.user_id },
+        where: { projectId: dto.project_id, userId: existingAttendance.user_id },
       });
 
       if (!user) {
