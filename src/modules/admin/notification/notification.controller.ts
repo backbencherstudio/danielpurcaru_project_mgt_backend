@@ -35,8 +35,8 @@ export class NotificationController {
 
     // Admin: Update loan
     @Patch(':id')
-    update(@Param('id') id: string, @Body() dto: { status: string }) {
-      return this.notificationService.update(id, dto.status);
+    update(@Param('id') id: string, @Body() dto: { status: string, notes?: string }) {
+      return this.notificationService.update(id, dto.status, dto.notes);
     }
 
   @ApiOperation({ summary: 'Delete notification' })
