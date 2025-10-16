@@ -13,6 +13,16 @@ export class ProjectService {
     try {
       const { assignees, userId, ...rest } = dto;
 
+      // If no assignees provided, get all employees
+      let finalAssignees = assignees;
+      if (!assignees || assignees.length === 0) {
+        const allEmployees = await this.prisma.user.findMany({
+          where: { type: 'employee', deleted_at: null },
+          select: { id: true }
+        });
+        finalAssignees = allEmployees.map(emp => emp.id);
+      }
+
       const project = await this.prisma.project.create({
         data: {
           name: dto.name,
@@ -23,13 +33,11 @@ export class ProjectService {
           cost: dto.cost,
           priority: dto.priority,
           ...(userId && { userId }),
-          assignees: assignees && assignees.length > 0
-            ? {
-              create: assignees.map(userId => ({
-                user: { connect: { id: userId } }
-              }))
-            }
-            : undefined,
+          assignees: {
+            create: finalAssignees.map(userId => ({
+              user: { connect: { id: userId } }
+            }))
+          },
         },
         include: { assignees: true },
       });

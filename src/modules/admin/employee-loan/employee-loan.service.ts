@@ -1,14 +1,28 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { LoanStatus } from '@prisma/client';
 import { FileUrlHelper } from 'src/common/helper/file-url.helper';
+import { NotificationRepository } from 'src/common/repository/notification/notification.repository';
+import { MessageGateway } from 'src/modules/chat/message/message.gateway';
 
 @Injectable()
 export class EmployeeLoanService {
-    constructor(private readonly prisma: PrismaService) { }
+    private readonly logger = new Logger(EmployeeLoanService.name);
+
+    constructor(private readonly prisma: PrismaService, private readonly messageGateway: MessageGateway) { }
 
     async createLoanRequest(dto: { user_id: string, loan_amount: number, loan_purpose?: string, notes?: string }) {
         try {
+            // Get employee info for notification
+            const employee = await this.prisma.user.findUnique({
+                where: { id: dto.user_id },
+                select: { name: true, email: true }
+            });
+
+            if (!employee) {
+                return { success: false, message: 'Employee not found' };
+            }
+
             const loan = await this.prisma.employeeLoan.create({
                 data: {
                     user_id: dto.user_id,
@@ -18,8 +32,48 @@ export class EmployeeLoanService {
                     loan_status: 'PENDING',
                 },
             });
+
+            // Get all admin users
+            const adminUsers = await this.prisma.user.findMany({
+                where: {
+                    type: 'admin',
+                    deleted_at: null,
+                    status: 1
+                },
+                select: { id: true, name: true, email: true }
+            });
+
+            // Send notifications to all admin users
+            for (const admin of adminUsers) {
+                try {
+                    // Create in-app notification
+                    await NotificationRepository.createNotification({
+                        receiver_id: admin.id,
+                        sender_id: dto.user_id,
+                        text: `New loan request received from ${employee?.name || 'Employee'}`,
+                        type: 'message',
+                        entity_id: loan.id,
+                    });
+
+                    // Emit realtime notification via websocket
+                    this.messageGateway.server.emit('notification', {
+                        receiver_id: admin.id,
+                        sender_id: dto.user_id,
+                        text: `New loan request from ${employee?.name || 'Employee'}`,
+                        type: 'message',
+                        entity_id: loan.id,
+                    });
+
+                    this.logger.log(`Sent notification to admin: ${admin.name}`);
+                } catch (notificationError) {
+                    this.logger.error(`Failed to send notification to admin ${admin.id}:`, notificationError);
+                }
+            }
+
+            this.logger.log(`Loan request created and notifications sent to ${adminUsers.length} admin(s)`);
             return { success: true, data: loan };
         } catch (error) {
+            this.logger.error('Error creating loan request:', error);
             return { success: false, message: error.message };
         }
     }

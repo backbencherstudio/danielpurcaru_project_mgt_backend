@@ -67,6 +67,11 @@ export class AttendanceController {
 
   @Patch(':id')
   @Roles(Role.ADMIN, Role.EMPLOYEE)
+  /**
+   * Update existing attendance record or create new one if ID doesn't exist
+   * @param id - Attendance record ID (if doesn't exist, will create new record)
+   * @param updateAttendanceDto - Attendance data (must include user_id, project_id, and date for creation)
+   */
   update(@Param('id') id: string, @Body() updateAttendanceDto: UpdateAttendanceDto) {
     return this.attendanceService.update(id, updateAttendanceDto);
   }

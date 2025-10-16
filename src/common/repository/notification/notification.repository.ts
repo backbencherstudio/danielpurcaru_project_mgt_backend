@@ -29,7 +29,8 @@ export class NotificationRepository {
       | 'booking'
       | 'payment_transaction'
       | 'package'
-      | 'blog';
+      | 'blog'
+      | 'loan_request';
     entity_id?: string;
   }) {
     const notificationEventData = {};
