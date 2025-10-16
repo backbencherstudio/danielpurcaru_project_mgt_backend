@@ -86,6 +86,8 @@ export class EmployeeService {
         password: passwordToUse, // Send the password that was actually used
       });
 
+      // Auto-assign employee to all active projects (status = 1)
+      await this.assignEmployeeToActiveProjects(result.id);
 
       return { success: true, data: result };
     } catch (error) {
@@ -138,7 +140,7 @@ export class EmployeeService {
           hourly_rate: true,
         },
         orderBy: {
-         created_at: 'desc',
+          created_at: 'desc',
         },
         skip,
         take: pageSize,
@@ -196,7 +198,37 @@ export class EmployeeService {
           email: true,
           avatar: true,
           employee_role: true,
-          hourly_rate: true,
+          hourly_rate: true,  
+          projectAssignee:{
+            select:{
+              project:{
+                select:{
+                  id: true,
+                  name: true,
+                },
+              },
+              total_hours: true,
+              total_cost: true,
+            },
+          },
+          attendance:{
+            select:{
+              id: true,
+              hours: true,
+              date: true,
+              attendance_status: true,
+              start_time: true,
+              lunch_start: true,
+              lunch_end: true,
+              end_time: true,
+              project:{
+                select:{
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
         },
       });
       if (!emp) return { success: false, message: 'Employee not found' };
@@ -281,6 +313,44 @@ export class EmployeeService {
       return { success: true, data: result };
     } catch (error) {
       return { success: false, message: error.message };
+    }
+  }
+
+  /**
+   * Auto-assign employee to all active projects (status = 1)
+   * @param employeeId - The ID of the employee to assign
+   */
+  private async assignEmployeeToActiveProjects(employeeId: string): Promise<void> {
+    try {
+      // Find all active projects (status = 1)
+      const activeProjects = await this.prisma.project.findMany({
+        where: {
+          status: 1,
+          deleted_at: null, // Ensure project is not soft deleted
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      // Create project assignments for each active project
+      const assignments = activeProjects.map(project => ({
+        projectId: project.id,
+        userId: employeeId,
+        total_hours: 0,
+        total_cost: 0,
+      }));
+
+      // Bulk create project assignments
+      if (assignments.length > 0) {
+        await this.prisma.projectAssignee.createMany({
+          data: assignments,
+          skipDuplicates: true, // Skip if assignment already exists
+        });
+      }
+    } catch (error) {
+      // Log error but don't throw to avoid breaking employee creation
+      console.error('Error assigning employee to active projects:', error);
     }
   }
 }

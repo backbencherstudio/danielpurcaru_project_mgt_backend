@@ -397,11 +397,93 @@ export class AttendanceService {
         select: { project_id: true, user_id: true }
       });
 
+      // If attendance record doesn't exist, create a new one
       if (!existingAttendance) {
-        return { success: false, message: 'Attendance record not found' };
+        // Validate required fields for creation
+        if (!dto.user_id || !dto.project_id || !dto.date) {
+          return { success: false, message: 'user_id, project_id, and date are required to create new attendance record' };
+        }
+
+        // Check if user is assigned to project
+        const user = await this.prisma.projectAssignee.findFirst({
+          where: { projectId: dto.project_id, userId: dto.user_id },
+        });
+
+        if (!user) {
+          return { success: false, message: 'User not assigned to project.' };
+        }
+
+        // Check for duplicate attendance on the same date
+        const existingRecord = await this.prisma.attendance.findFirst({
+          where: {
+            user_id: dto.user_id,
+            date: new Date(dto.date),
+            deleted_at: null,
+          },
+        });
+
+        if (existingRecord) {
+          return { success: false, message: 'Attendance record already exists for this user and date.' };
+        }
+
+        // Set attendance status based on hours
+        let attendance_status = dto.attendance_status;
+        if (dto.hours > 0) {
+          attendance_status = AttendanceStatus.PRESENT;
+        } else {
+          attendance_status = AttendanceStatus.ABSENT;
+        }
+
+        // Parse times
+        const start_time = dto.start_time ? new Date(dto.start_time) : undefined;
+        const end_time = dto.end_time ? new Date(dto.end_time) : undefined;
+        const lunch_start = dto.lunch_start ? new Date(dto.lunch_start) : undefined;
+        const lunch_end = dto.lunch_end ? new Date(dto.lunch_end) : undefined;
+
+        // Calculate hours if possible
+        let hours = dto.hours;
+        if (start_time && end_time) {
+          hours = (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
+          if (lunch_start && lunch_end) {
+            hours -= (lunch_end.getTime() - lunch_start.getTime()) / (1000 * 60 * 60);
+          }
+          hours = Math.max(0, hours);
+        }
+
+        const data = await this.prisma.attendance.create({
+          data: {
+            user_id: dto.user_id,
+            project_id: dto.project_id,
+            date: new Date(dto.date),
+            start_time,
+            lunch_start,
+            lunch_end,
+            end_time,
+            hours,
+            attendance_status,
+            notes: dto.notes,
+            address: dto.address,
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true,
+                employee_role: true,
+              },
+            },
+          },
+        });
+
+        // Update project assignee total hours and cost
+        await this.updateProjectAssigneeTotals(dto.project_id, dto.user_id);
+
+        return { success: true, data, message: 'New attendance record created' };
       }
 
-
+      // If record exists, proceed with update
       // check if user is assigned to project
       const user = await this.prisma.projectAssignee.findFirst({
         where: { projectId: dto.project_id, userId: existingAttendance.user_id },
@@ -411,7 +493,7 @@ export class AttendanceService {
         return { success: false, message: 'User not assigned to project.' };
       }
 
-      // hours
+      // Set attendance status based on hours
       if (dto.hours > 0) {
         dto.attendance_status = AttendanceStatus.PRESENT;
       } else {
@@ -444,7 +526,7 @@ export class AttendanceService {
       // Update project assignee total hours and cost
       await this.updateProjectAssigneeTotals(existingAttendance.project_id, existingAttendance.user_id);
 
-      return { success: true, data };
+      return { success: true, data, message: 'Attendance record updated' };
     } catch (error) {
       return { success: false, message: error.message };
     }

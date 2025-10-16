@@ -4,10 +4,11 @@ import { SojebStorage } from 'src/common/lib/Disk/SojebStorage';
 import appConfig from 'src/config/app.config';
 import { UserRepository } from 'src/common/repository/user/user.repository';
 import { Role } from 'src/common/guard/role/role.enum';
+import { LoanStatus } from '@prisma/client';
 
 @Injectable()
 export class NotificationService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async findAll(user_id: string) {
     try {
@@ -88,6 +89,27 @@ export class NotificationService {
       };
     }
   }
+
+  async update(id: string, status: string) {
+    console.log("Updating loan status to: ", status);
+    try {
+      const loan = await this.prisma.employeeLoan.update({
+        where: { id: id },
+        data: { loan_status: status as LoanStatus },
+      });
+      return {
+        success: true,
+        message: 'Loan status updated successfully',
+        data: loan,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+
 
   async remove(id: string, user_id: string) {
     try {
