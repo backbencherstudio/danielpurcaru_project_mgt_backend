@@ -90,12 +90,12 @@ export class NotificationService {
     }
   }
 
-  async update(id: string, status: string) {
+  async update(id: string, status: string, notes?: string) {
     console.log("Updating loan status to: ", status);
     try {
       const loan = await this.prisma.employeeLoan.update({
         where: { id: id },
-        data: { loan_status: status as LoanStatus },
+        data: { loan_status: status as LoanStatus, notes: notes },
       });
       return {
         success: true,
