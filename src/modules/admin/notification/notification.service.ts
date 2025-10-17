@@ -61,26 +61,47 @@ export class NotificationService {
         },
       });
 
-      // add url to avatar
+      // Format notifications to match socket.io payload format
+      const formattedNotifications = [];
       if (notifications.length > 0) {
         for (const notification of notifications) {
-          if (notification.sender && notification.sender.avatar) {
-            notification.sender['avatar_url'] = SojebStorage.url(
-              appConfig().storageUrl.avatar + notification.sender.avatar,
-            );
+          let amount = null;
+
+          // If this is a loan notification, fetch the loan amount
+          if (notification.entity_id && notification.notification_event?.text?.includes('loan request')) {
+            try {
+              const loan = await this.prisma.employeeLoan.findUnique({
+                where: { id: notification.entity_id },
+                select: { loan_amount: true }
+              });
+              amount = loan?.loan_amount || null;
+            } catch (error) {
+              console.error('Error fetching loan amount:', error);
+            }
           }
 
-          if (notification.receiver && notification.receiver.avatar) {
-            notification.receiver['avatar_url'] = SojebStorage.url(
-              appConfig().storageUrl.avatar + notification.receiver.avatar,
-            );
-          }
+          const formattedNotification = {
+            receiver_id: notification.receiver_id,
+            sender_id: notification.sender_id,
+            sender_name: notification.sender?.name || 'Unknown',
+            sender_image: notification.sender?.avatar
+              ? SojebStorage.url(appConfig().storageUrl.avatar + notification.sender.avatar)
+              : null,
+            text: notification.notification_event?.text || 'Notification',
+            amount: amount,
+            type: notification.notification_event?.type || 'message',
+            entity_id: notification.entity_id,
+            id: notification.id,
+            created_at: notification.created_at,
+          };
+
+          formattedNotifications.push(formattedNotification);
         }
       }
 
       return {
         success: true,
-        data: notifications,
+        data: formattedNotifications,
       };
     } catch (error) {
       return {
