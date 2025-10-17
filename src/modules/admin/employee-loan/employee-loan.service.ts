@@ -4,6 +4,8 @@ import { LoanStatus } from '@prisma/client';
 import { FileUrlHelper } from 'src/common/helper/file-url.helper';
 import { NotificationRepository } from 'src/common/repository/notification/notification.repository';
 import { MessageGateway } from 'src/modules/chat/message/message.gateway';
+import { SojebStorage } from 'src/common/lib/Disk/SojebStorage';
+import appConfig from 'src/config/app.config';
 
 @Injectable()
 export class EmployeeLoanService {
@@ -16,7 +18,7 @@ export class EmployeeLoanService {
             // Get employee info for notification
             const employee = await this.prisma.user.findUnique({
                 where: { id: dto.user_id },
-                select: { name: true, email: true }
+                select: { name: true, email: true, avatar: true }
             });
 
             if (!employee) {
@@ -55,14 +57,20 @@ export class EmployeeLoanService {
                         entity_id: loan.id,
                     });
 
-                    // Emit realtime notification via websocket
-                    this.messageGateway.server.emit('notification', {
-                        receiver_id: admin.id,
-                        sender_id: dto.user_id,
-                        text: `New loan request from ${employee?.name || 'Employee'}`,
-                        type: 'message',
-                        entity_id: loan.id,
-                    });
+                    // Emit realtime notification via websocket to specific admin
+                    const adminSocketId = this.messageGateway.clients.get(admin.id);
+                    if (adminSocketId) {
+                        this.messageGateway.server.to(adminSocketId).emit('notification', {
+                            receiver_id: admin.id,
+                            sender_id: dto.user_id,
+                            sender_name: employee?.name || 'Employee',
+                            sender_image: employee?.avatar ? SojebStorage.url(appConfig().storageUrl.avatar + employee.avatar) : null,
+                            text: `New loan request from ${employee?.name || 'Employee'}`,
+                            amount: dto.loan_amount,
+                            type: 'message',
+                            entity_id: loan.id,
+                        });
+                    }
 
                     this.logger.log(`Sent notification to admin: ${admin.name}`);
                 } catch (notificationError) {
