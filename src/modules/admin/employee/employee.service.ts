@@ -198,11 +198,11 @@ export class EmployeeService {
           email: true,
           avatar: true,
           employee_role: true,
-          hourly_rate: true,  
-          projectAssignee:{
-            select:{
-              project:{
-                select:{
+          hourly_rate: true,
+          projectAssignee: {
+            select: {
+              project: {
+                select: {
                   id: true,
                   name: true,
                 },
@@ -210,9 +210,10 @@ export class EmployeeService {
               total_hours: true,
               total_cost: true,
             },
+            take: 10,
           },
-          attendance:{
-            select:{
+          attendance: {
+            select: {
               id: true,
               hours: true,
               date: true,
@@ -221,17 +222,28 @@ export class EmployeeService {
               lunch_start: true,
               lunch_end: true,
               end_time: true,
-              project:{
-                select:{
+              project: {
+                select: {
                   id: true,
                   name: true,
                 },
               },
             },
+            orderBy: { date: 'desc' },
+            take: 30,
           },
         },
       });
       if (!emp) return { success: false, message: 'Employee not found' };
+
+      // Get unique project IDs from attendance records
+      const attendedProjectIds = [...new Set(emp.attendance.map(att => att.project?.id).filter(Boolean))];
+
+      // Filter projectAssignee to only include projects with attendance
+      const filteredProjectAssignee = emp.projectAssignee.filter(assignee =>
+        attendedProjectIds.includes(assignee.project.id)
+      );
+
       const agg = await this.prisma.attendance.aggregate({
         where: { user_id: emp.id, deleted_at: null },
         _sum: { hours: true },
@@ -240,6 +252,7 @@ export class EmployeeService {
       const earning = recorded_hours * Number(emp.hourly_rate || 0);
       const dataWithUrl = FileUrlHelper.addAvatarUrl({
         ...emp,
+        projectAssignee: filteredProjectAssignee,
         recorded_hours,
         earning,
       });

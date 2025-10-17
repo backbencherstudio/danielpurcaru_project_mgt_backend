@@ -13,7 +13,7 @@ export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) { }
 
   @Post()
-  @Roles(Role.EMPLOYEE)
+  @Roles(Role.EMPLOYEE, Role.ADMIN)
   create(@Body() createAttendanceDto: CreateAttendanceDto, @Req() req: any) {
     const user_id = req.user.userId;
     return this.attendanceService.create(createAttendanceDto);
