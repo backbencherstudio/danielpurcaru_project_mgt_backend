@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
-import { toZonedTime } from 'date-fns-tz';
+import { toUtc, toLisbon } from 'src/common/helper/timezone.helper';
 import { Cron } from '@nestjs/schedule';
 import { AttendanceStatus } from './dto/attendance-status.enum';
 
@@ -27,13 +27,19 @@ export class AttendanceService {
       });
 
       if (!user) {
-        return { success: false, message: 'User not assigned to project.' };
+        await this.prisma.projectAssignee.create({
+          data: {
+            projectId: dto.project_id,
+            userId: dto.user_id,
+          },
+        });
       }
 
 
 
       const status = dto.attendance_status || 'PRESENT';
-      const date = new Date(dto.date);
+      // Treat incoming date/time strings as Europe/Lisbon local time
+      const date = dto.date ? toUtc(dto.date) : undefined;
 
       // Check for existing attendance (either PRESENT or ABSENT)
       const existing = await this.prisma.attendance.findFirst({
@@ -48,10 +54,10 @@ export class AttendanceService {
         if (existing) {
           // If existing is ABSENT, update it to PRESENT
           if (existing.attendance_status === 'ABSENT') {
-            const start_time = dto.start_time ? new Date(dto.start_time) : undefined;
-            const end_time = dto.end_time ? new Date(dto.end_time) : undefined;
-            const lunch_start = dto.lunch_start ? new Date(dto.lunch_start) : undefined;
-            const lunch_end = dto.lunch_end ? new Date(dto.lunch_end) : undefined;
+            const start_time = toUtc(dto.start_time);
+            const end_time = toUtc(dto.end_time);
+            const lunch_start = toUtc(dto.lunch_start);
+            const lunch_end = toUtc(dto.lunch_end);
             let hours = dto.hours;
             if (start_time && end_time) {
               hours = (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
@@ -88,7 +94,7 @@ export class AttendanceService {
           const exists = await this.prisma.attendance.findFirst({
             where: {
               user_id: dto.user_id,
-              date: new Date(dto.date),
+              date: toUtc(dto.date),
               attendance_status: 'PRESENT',
               deleted_at: null,
             },
@@ -99,10 +105,10 @@ export class AttendanceService {
         }
 
         // Parse times
-        const start_time = dto.start_time ? new Date(dto.start_time) : undefined;
-        const end_time = dto.end_time ? new Date(dto.end_time) : undefined;
-        const lunch_start = dto.lunch_start ? new Date(dto.lunch_start) : undefined;
-        const lunch_end = dto.lunch_end ? new Date(dto.lunch_end) : undefined;
+        const start_time = toUtc(dto.start_time);
+        const end_time = toUtc(dto.end_time);
+        const lunch_start = toUtc(dto.lunch_start);
+        const lunch_end = toUtc(dto.lunch_end);
 
         // Calculate hours if possible
         let hours = dto.hours;
@@ -118,7 +124,7 @@ export class AttendanceService {
           data: {
             user_id: dto.user_id,
             project_id: dto.project_id,
-            date: new Date(dto.date),
+            date: toUtc(dto.date),
             start_time,
             lunch_start,
             lunch_end,
@@ -149,7 +155,7 @@ export class AttendanceService {
           data: {
             user_id: dto.user_id,
             project_id: dto.project_id,
-            date: new Date(dto.date),
+            date: toUtc(dto.date),
             attendance_status: dto.attendance_status,
             hours: 0,
             notes: dto.notes,
@@ -328,7 +334,9 @@ export class AttendanceService {
       const where: any = { deleted_at: null };
       if (user_id) where.user_id = user_id;
       if (attendance_status) where.attendance_status = attendance_status;
-      if (date) where.date = new Date(date);
+      if (date) {
+        where.date = toUtc(date);
+      }
       if (search) {
         where.OR = [
           { notes: { contains: search, mode: 'insensitive' } },
@@ -435,10 +443,10 @@ export class AttendanceService {
         }
 
         // Parse times
-        const start_time = dto.start_time ? new Date(dto.start_time) : undefined;
-        const end_time = dto.end_time ? new Date(dto.end_time) : undefined;
-        const lunch_start = dto.lunch_start ? new Date(dto.lunch_start) : undefined;
-        const lunch_end = dto.lunch_end ? new Date(dto.lunch_end) : undefined;
+        const start_time = toUtc(dto.start_time);
+        const end_time = toUtc(dto.end_time);
+        const lunch_start = toUtc(dto.lunch_start);
+        const lunch_end = toUtc(dto.lunch_end);
 
         // Calculate hours if possible
         let hours = dto.hours;
@@ -454,7 +462,7 @@ export class AttendanceService {
           data: {
             user_id: dto.user_id,
             project_id: dto.project_id,
-            date: new Date(dto.date),
+            date: toUtc(dto.date),
             start_time,
             lunch_start,
             lunch_end,
@@ -504,11 +512,11 @@ export class AttendanceService {
         where: { id },
         data: {
           ...dto,
-          date: dto.date ? new Date(dto.date) : undefined,
-          start_time: dto.start_time ? new Date(dto.start_time) : undefined,
-          lunch_start: dto.lunch_start ? new Date(dto.lunch_start) : undefined,
-          lunch_end: dto.lunch_end ? new Date(dto.lunch_end) : undefined,
-          end_time: dto.end_time ? new Date(dto.end_time) : undefined,
+          date: toUtc(dto.date),
+          start_time: toUtc(dto.start_time),
+          lunch_start: toUtc(dto.lunch_start),
+          lunch_end: toUtc(dto.lunch_end),
+          end_time: toUtc(dto.end_time),
         },
         include: {
           user: {
@@ -615,7 +623,7 @@ export class AttendanceService {
       select: { start_date: true },
     });
     const skipDates = new Set(
-      calendarEvents.map(ev => toZonedTime(ev.start_date, timeZone).toISOString().slice(0, 10))
+      calendarEvents.map(ev => toLisbon(ev.start_date).toISOString().slice(0, 10))
     );
 
     // 2. Get all attendance dates for this user in the month
@@ -635,7 +643,7 @@ export class AttendanceService {
     // 3. For each day, skip if Sunday or in skipDates, else create ABSENT if missing
     for (let d = 1; d <= daysInMonth; d++) {
       const utcDate = new Date(Date.UTC(year, month - 1, d));
-      const dateObj = toZonedTime(utcDate, timeZone);
+      const dateObj = toLisbon(utcDate);
       const dateStr = dateObj.toISOString().slice(0, 10);
 
       // Skip if Sunday or in academic calendar OFF_DAY/HOLIDAY

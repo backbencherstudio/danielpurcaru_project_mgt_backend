@@ -89,7 +89,6 @@ export class MailService {
     try {
       const from = `${process.env.APP_NAME} <${appConfig().mail.from}>`;
       const subject = 'Welcome to the Company - Your Login Credentials';
-
       // add to queue
       await this.queue.add('sendEmployeeCredentials', {
         to: params.email,
@@ -104,6 +103,25 @@ export class MailService {
         },
       });
 
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  async sendPasswordChangedNotice(params: { email: string; name?: string }) {
+    try {
+      const from = `${process.env.APP_NAME} <${appConfig().mail.from}>`;
+      const subject = 'Your password was changed';
+      await this.queue.add('sendPasswordChangedNotice', {
+        to: params.email,
+        from: from,
+        subject: subject,
+        template: 'password-changed',
+        context: {
+          name: params.name || params.email,
+          appName: appConfig().app.name,
+        },
+      });
     } catch (error) {
       console.log(error);
     }
