@@ -198,7 +198,14 @@ export class EmployeeService {
           email: true,
           avatar: true,
           employee_role: true,
+          address: true,
+          phone_number: true,
+          physical_number: true,
+          gender: true,
+          date_of_birth: true,
           hourly_rate: true,
+          recorded_hours: true,
+          earning: true,
           projectAssignee: {
             select: {
               project: {
@@ -298,7 +305,14 @@ export class EmployeeService {
           earning: true,
         },
       });
+
       const dataWithUrl = FileUrlHelper.addAvatarUrl(result);
+      if (updateEmployeeDto.password && result.email) {
+        await this.mailService.sendPasswordChangedNotice({
+          email: result.email,
+          name: result.name,
+        });
+      }
       return { success: true, data: dataWithUrl };
     } catch (error) {
       return { success: false, message: error.message };
