@@ -141,7 +141,7 @@ export class DashboardService {
     };
   }
 
-  async getEmployeeSummary(user_id: string) {
+  async getEmployeeSummary(user_id: string, month?: string, year?: string) {
     // Get employee basic info
     const emp = await this.prisma.user.findUnique({
       where: { id: user_id, deleted_at: null },
@@ -154,9 +154,16 @@ export class DashboardService {
     });
     if (!emp) return { success: false, message: 'Employee not found' };
 
-    // Calculate total hours
+    // Determine month/year window (default to current if not provided)
+    const now = new Date();
+    const monthNum = month && !isNaN(Number(month)) ? Number(month) : (now.getMonth() + 1);
+    const yearNum = year && !isNaN(Number(year)) ? Number(year) : now.getFullYear();
+    const startDate = new Date(yearNum, monthNum - 1, 1);
+    const endDate = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
+
+    // Calculate total hours in window
     const agg = await this.prisma.attendance.aggregate({
-      where: { user_id, deleted_at: null },
+      where: { user_id, deleted_at: null, date: { gte: startDate, lte: endDate } },
       _sum: { hours: true },
     });
     const totalHours = Number(agg._sum.hours) || 0;
@@ -166,7 +173,12 @@ export class DashboardService {
     // Calculate total working days (unique days with attendance)
     const workingDays = (
       await this.prisma.attendance.findMany({
-        where: { user_id, deleted_at: null, attendance_status: 'PRESENT' },
+        where: {
+          user_id,
+          deleted_at: null,
+          attendance_status: 'PRESENT',
+          date: { gte: startDate, lte: endDate },
+        },
         distinct: ['date'],
         select: { date: true },
       })

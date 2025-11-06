@@ -30,8 +30,8 @@ export class EmployeeController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.employeeService.findOne(id);
+  findOne(@Param('id') id: string, @Query() query: { month?: string; year?: string }) {
+    return this.employeeService.findOne(id, query?.month, query?.year);
   }
 
   @Patch(':id')

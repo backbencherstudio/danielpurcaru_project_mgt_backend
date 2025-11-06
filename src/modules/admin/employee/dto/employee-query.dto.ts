@@ -16,4 +16,12 @@ export class EmployeeQueryDto {
     @IsOptional()
     @IsNumberString()
     limit?: string;
+
+    @IsOptional()
+    @IsNumberString()
+    month?: string; // 1-12
+
+    @IsOptional()
+    @IsNumberString()
+    year?: string; // e.g., 2025
 }

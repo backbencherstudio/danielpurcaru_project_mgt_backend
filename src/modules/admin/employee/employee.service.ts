@@ -97,7 +97,7 @@ export class EmployeeService {
 
   async findAll(query: EmployeeQueryDto) {
     try {
-      const { employee_role, search, page = '1', limit = '10' } = query;
+      const { employee_role, search, page = '1', limit = '10', month, year } = query;
 
       const pageNumber = parseInt(page, 10) || 1;
       const pageSize = parseInt(limit, 10) || 10;
@@ -149,18 +149,26 @@ export class EmployeeService {
       // For each employee, calculate recorded_hours and earning
       const dataWithHours = await Promise.all(
         data.map(async (emp) => {
+          // Determine month/year filter: use provided, else default to current month/year
+          const now = new Date();
+          const monthNum = month && !isNaN(Number(month)) ? Number(month) : (now.getMonth() + 1);
+          const yearNum = year && !isNaN(Number(year)) ? Number(year) : now.getFullYear();
+          const startDate = new Date(yearNum, monthNum - 1, 1);
+          const endDate = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
+          const dateFilter: any = { gte: startDate, lte: endDate };
+
           const agg = await this.prisma.attendance.aggregate({
-            where: { user_id: emp.id, deleted_at: null },
+            where: {
+              user_id: emp.id,
+              deleted_at: null,
+              date: dateFilter,
+            },
             _sum: { hours: true },
           });
           const recorded_hours = Number(agg._sum.hours) || 0;
           const earning = recorded_hours * Number(emp.hourly_rate || 0);
 
-          // Update the user with new recorded_hours and earning
-          await this.prisma.user.update({
-            where: { id: emp.id },
-            data: { recorded_hours, earning },
-          });
+          // Do not update stored totals here since view is month-scoped
 
           return FileUrlHelper.addAvatarUrl({
             ...emp,
@@ -185,8 +193,15 @@ export class EmployeeService {
     }
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, month?: string, year?: string) {
     try {
+      // Month/year window: use provided if available else current
+      const now = new Date();
+      const monthNum = month && !isNaN(Number(month)) ? Number(month) : (now.getMonth() + 1);
+      const yearNum = year && !isNaN(Number(year)) ? Number(year) : now.getFullYear();
+      const startDate = new Date(yearNum, monthNum - 1, 1);
+      const endDate = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
+
       const emp = await this.prisma.user.findUnique({
         where: { id, type: 'employee', deleted_at: null },
         select: {
@@ -236,6 +251,7 @@ export class EmployeeService {
                 },
               },
             },
+            where: { date: { gte: startDate, lte: endDate } },
             orderBy: { date: 'desc' },
             take: 30,
           },
@@ -252,7 +268,7 @@ export class EmployeeService {
       );
 
       const agg = await this.prisma.attendance.aggregate({
-        where: { user_id: emp.id, deleted_at: null },
+        where: { user_id: emp.id, deleted_at: null, date: { gte: startDate, lte: endDate } },
         _sum: { hours: true },
       });
       const recorded_hours = Number(agg._sum.hours) || 0;

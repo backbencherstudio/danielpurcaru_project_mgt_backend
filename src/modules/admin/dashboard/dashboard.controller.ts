@@ -47,8 +47,8 @@ export class DashboardController {
 
   @Get('employee/:user_id')
   @Roles(Role.ADMIN, Role.EMPLOYEE)
-  getEmployeeDashboard(@Param('user_id') user_id: string) {
-    return this.dashboardService.getEmployeeSummary(user_id);
+  getEmployeeDashboard(@Param('user_id') user_id: string, @Query() query: { month?: string; year?: string }) {
+    return this.dashboardService.getEmployeeSummary(user_id, query?.month, query?.year);
   }
 
   @Get('employee/:user_id/month-summary')
