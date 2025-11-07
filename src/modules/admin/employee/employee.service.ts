@@ -95,6 +95,26 @@ export class EmployeeService {
     }
   }
 
+  async allEmployees() {
+    try {
+      const employees = await this.prisma.user.findMany({
+        where: { type: 'employee', deleted_at: null },
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          avatar: true,
+          email: true,
+        },
+      });
+
+      const dataWithUrl = employees.map(emp => FileUrlHelper.addAvatarUrl(emp));
+      return { success: true, data: dataWithUrl };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  }
+
   async findAll(query: EmployeeQueryDto) {
     try {
       const { employee_role, search, page = '1', limit = '10', month, year } = query;
@@ -154,7 +174,7 @@ export class EmployeeService {
           const monthNum = month && !isNaN(Number(month)) ? Number(month) : (now.getMonth() + 1);
           const yearNum = year && !isNaN(Number(year)) ? Number(year) : now.getFullYear();
           const startDate = new Date(yearNum, monthNum - 1, 1);
-          const endDate = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
+          const endDate = new Date(yearNum, monthNum + 1, 0, 23, 59, 59, 999);
           const dateFilter: any = { gte: startDate, lte: endDate };
 
           const agg = await this.prisma.attendance.aggregate({
@@ -199,8 +219,9 @@ export class EmployeeService {
       const now = new Date();
       const monthNum = month && !isNaN(Number(month)) ? Number(month) : (now.getMonth() + 1);
       const yearNum = year && !isNaN(Number(year)) ? Number(year) : now.getFullYear();
-      const startDate = new Date(yearNum, monthNum - 1, 1);
-      const endDate = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
+      // Show only current month data (no previous month)
+      const startDate = new Date(yearNum, monthNum - 1, 1); // First day of current month
+      const endDate = new Date(yearNum, monthNum + 1, 0, 23, 59, 59, 999); // Last day of current month
 
       const emp = await this.prisma.user.findUnique({
         where: { id, type: 'employee', deleted_at: null },
@@ -259,12 +280,34 @@ export class EmployeeService {
       });
       if (!emp) return { success: false, message: 'Employee not found' };
 
-      // Get unique project IDs from attendance records
+      // Get unique project IDs from attendance records in this month
       const attendedProjectIds = [...new Set(emp.attendance.map(att => att.project?.id).filter(Boolean))];
 
-      // Filter projectAssignee to only include projects with attendance
+      // Filter projectAssignee to only include projects with attendance in this month
       const filteredProjectAssignee = emp.projectAssignee.filter(assignee =>
         attendedProjectIds.includes(assignee.project.id)
+      );
+
+      // Calculate month-specific totals for each project
+      const projectAssigneeWithMonthTotals = await Promise.all(
+        filteredProjectAssignee.map(async (assignee) => {
+          const projectAgg = await this.prisma.attendance.aggregate({
+            where: {
+              user_id: emp.id,
+              project_id: assignee.project.id,
+              deleted_at: null,
+              date: { gte: startDate, lte: endDate },
+            },
+            _sum: { hours: true },
+          });
+          const monthHours = Number(projectAgg._sum.hours) || 0;
+          const monthCost = monthHours * Number(emp.hourly_rate || 0);
+          return {
+            ...assignee,
+            total_hours: monthHours,
+            total_cost: monthCost,
+          };
+        })
       );
 
       const agg = await this.prisma.attendance.aggregate({
@@ -275,7 +318,7 @@ export class EmployeeService {
       const earning = recorded_hours * Number(emp.hourly_rate || 0);
       const dataWithUrl = FileUrlHelper.addAvatarUrl({
         ...emp,
-        projectAssignee: filteredProjectAssignee,
+        projectAssignee: projectAssigneeWithMonthTotals,
         recorded_hours,
         earning,
       });

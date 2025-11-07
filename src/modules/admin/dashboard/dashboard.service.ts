@@ -159,7 +159,7 @@ export class DashboardService {
     const monthNum = month && !isNaN(Number(month)) ? Number(month) : (now.getMonth() + 1);
     const yearNum = year && !isNaN(Number(year)) ? Number(year) : now.getFullYear();
     const startDate = new Date(yearNum, monthNum - 1, 1);
-    const endDate = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
+    const endDate = new Date(yearNum, monthNum + 1, 0, 23, 59, 59, 999);
 
     // Calculate total hours in window
     const agg = await this.prisma.attendance.aggregate({
