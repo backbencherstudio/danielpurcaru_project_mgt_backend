@@ -29,6 +29,11 @@ export class EmployeeController {
     return this.employeeService.findAll(query);
   }
 
+  @Get('all')
+  async allEmployees() {
+    return this.employeeService.allEmployees();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Query() query: { month?: string; year?: string }) {
     return this.employeeService.findOne(id, query?.month, query?.year);
