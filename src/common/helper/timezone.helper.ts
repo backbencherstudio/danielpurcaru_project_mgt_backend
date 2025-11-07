@@ -1,20 +1,24 @@
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
+import * as dayjs from 'dayjs';
+import * as utc from 'dayjs/plugin/utc';
+import * as timezone from 'dayjs/plugin/timezone';
 
-dayjs.extend(utc);
-dayjs.extend(timezone);
+const dayjsInstance = (dayjs as any).default || dayjs;
+const utcPlugin = (utc as any).default || utc;
+const timezonePlugin = (timezone as any).default || timezone;
+
+dayjsInstance.extend(utcPlugin);
+dayjsInstance.extend(timezonePlugin);
 
 export const APP_TIMEZONE = 'Europe/Lisbon';
 
 export const toUtc = (value?: string | Date) => {
     if (!value) return undefined;
     const str = typeof value === 'string' ? value : new Date(value).toISOString();
-    return dayjs.tz(str, APP_TIMEZONE).toDate();
+    return dayjsInstance.tz(str, APP_TIMEZONE).toDate();
 };
 
 export const toLisbon = (value: string | Date) => {
-    return dayjs(value).tz(APP_TIMEZONE).toDate();
+    return dayjsInstance(value).tz(APP_TIMEZONE).toDate();
 };
 
 
