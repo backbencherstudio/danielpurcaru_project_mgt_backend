@@ -490,7 +490,6 @@ export class AttendanceService {
 
         return { success: true, data, message: 'New attendance record created' };
       }
-
       // If record exists, proceed with update
       // check if user is assigned to project
       const user = await this.prisma.projectAssignee.findFirst({
@@ -531,8 +530,18 @@ export class AttendanceService {
         },
       });
 
-      // Update project assignee total hours and cost
-      await this.updateProjectAssigneeTotals(existingAttendance.project_id, existingAttendance.user_id);
+      // Check if project_id changed
+      const projectIdChanged = dto.project_id && dto.project_id !== existingAttendance.project_id;
+
+      if (projectIdChanged) {
+        // Update old project totals (hours will be removed automatically since project_id changed)
+        await this.updateProjectAssigneeTotals(existingAttendance.project_id, existingAttendance.user_id);
+        // Update new project totals (hours will be added automatically)
+        await this.updateProjectAssigneeTotals(dto.project_id, existingAttendance.user_id);
+      } else {
+        // Project didn't change, just update the current project totals
+        await this.updateProjectAssigneeTotals(data.project_id, existingAttendance.user_id);
+      }
 
       return { success: true, data, message: 'Attendance record updated' };
     } catch (error) {
