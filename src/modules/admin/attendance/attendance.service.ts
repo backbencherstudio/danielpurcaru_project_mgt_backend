@@ -442,20 +442,24 @@ export class AttendanceService {
           attendance_status = AttendanceStatus.ABSENT;
         }
 
-        // Parse times
-        const start_time = toUtc(dto.start_time);
-        const end_time = toUtc(dto.end_time);
-        const lunch_start = toUtc(dto.lunch_start);
-        const lunch_end = toUtc(dto.lunch_end);
+        const isPresent = attendance_status === AttendanceStatus.PRESENT;
+
+        // Parse times only when present
+        const start_time = isPresent ? toUtc(dto.start_time) : null;
+        const end_time = isPresent ? toUtc(dto.end_time) : null;
+        const lunch_start = isPresent ? toUtc(dto.lunch_start) : null;
+        const lunch_end = isPresent ? toUtc(dto.lunch_end) : null;
 
         // Calculate hours if possible
-        let hours = dto.hours;
-        if (start_time && end_time) {
+        let hours = dto.hours || 0;
+        if (isPresent && start_time && end_time) {
           hours = (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
           if (lunch_start && lunch_end) {
             hours -= (lunch_end.getTime() - lunch_start.getTime()) / (1000 * 60 * 60);
           }
           hours = Math.max(0, hours);
+        } else if (!isPresent) {
+          hours = 0;
         }
 
         const data = await this.prisma.attendance.create({
@@ -505,17 +509,24 @@ export class AttendanceService {
         dto.attendance_status = AttendanceStatus.PRESENT;
       } else {
         dto.attendance_status = AttendanceStatus.ABSENT;
+        dto.hours = 0;
       }
+
+      const isPresent = dto.attendance_status === AttendanceStatus.PRESENT;
+      const start_time = isPresent ? toUtc(dto.start_time) : null;
+      const lunch_start = isPresent ? toUtc(dto.lunch_start) : null;
+      const lunch_end = isPresent ? toUtc(dto.lunch_end) : null;
+      const end_time = isPresent ? toUtc(dto.end_time) : null;
 
       const data = await this.prisma.attendance.update({
         where: { id },
         data: {
           ...dto,
           date: toUtc(dto.date),
-          start_time: toUtc(dto.start_time),
-          lunch_start: toUtc(dto.lunch_start),
-          lunch_end: toUtc(dto.lunch_end),
-          end_time: toUtc(dto.end_time),
+          start_time,
+          lunch_start,
+          lunch_end,
+          end_time,
         },
         include: {
           user: {
