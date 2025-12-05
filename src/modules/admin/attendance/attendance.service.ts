@@ -13,6 +13,10 @@ export class AttendanceService {
   async create(dto: CreateAttendanceDto) {
     try {
 
+      // check if project id
+      if (!dto.project_id) {
+        return { success: false, message: 'Project is required.' };
+      }
 
       const project = await this.prisma.project.findUnique({
         where: { id: dto.project_id },
