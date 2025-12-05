@@ -220,8 +220,9 @@ export class EmployeeService {
       const monthNum = month && !isNaN(Number(month)) ? Number(month) : (now.getMonth() + 1);
       const yearNum = year && !isNaN(Number(year)) ? Number(year) : now.getFullYear();
       // Show only current month data (no previous month)
-      const startDate = new Date(yearNum, monthNum - 1, 1); // First day of current month
-      const endDate = new Date(yearNum, monthNum + 1, 0, 23, 59, 59, 999); // Last day of current month
+      // Use UTC dates to avoid timezone issues
+      const startDate = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0, 0)); // First day of current month in UTC
+      const endDate = new Date(Date.UTC(yearNum, monthNum, 0, 23, 59, 59, 999)); // Last day of current month in UTC
 
       const emp = await this.prisma.user.findUnique({
         where: { id, type: 'employee', deleted_at: null },
