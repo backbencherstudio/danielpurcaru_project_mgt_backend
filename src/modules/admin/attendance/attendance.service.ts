@@ -74,6 +74,7 @@ export class AttendanceService {
               where: { id: existing.id },
               data: {
                 attendance_status: 'PRESENT',
+                project_id: dto.project_id,
                 start_time,
                 end_time,
                 lunch_start,
