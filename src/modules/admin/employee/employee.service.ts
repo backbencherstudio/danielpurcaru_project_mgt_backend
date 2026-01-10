@@ -173,8 +173,9 @@ export class EmployeeService {
           const now = new Date();
           const monthNum = month && !isNaN(Number(month)) ? Number(month) : (now.getMonth() + 1);
           const yearNum = year && !isNaN(Number(year)) ? Number(year) : now.getFullYear();
-          const startDate = new Date(yearNum, monthNum - 1, 1);
-          const endDate = new Date(yearNum, monthNum + 1, 0, 23, 59, 59, 999);
+          // Use UTC to avoid timezone issues and ensure month boundaries are correct
+          const startDate = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0, 0));
+          const endDate = new Date(Date.UTC(yearNum, monthNum, 0, 23, 59, 59, 999));
           const dateFilter: any = { gte: startDate, lte: endDate };
 
           const agg = await this.prisma.attendance.aggregate({
