@@ -5,7 +5,7 @@ import { toZonedTime } from 'date-fns-tz';
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async getSummary() {
     // Total Employees
@@ -20,12 +20,26 @@ export class DashboardService {
     });
     const totalHours = Number(totalHoursAgg._sum.hours) || 0;
 
-    // Labor Cost (sum of all employees' earning)
-    const laborCostAgg = await this.prisma.user.aggregate({
-      where: { type: 'employee', deleted_at: null },
-      _sum: { earning: true },
+    // Labor Cost (derive from attendance hours x employee hourly rate)
+    const laborCostRows = await this.prisma.attendance.findMany({
+      where: {
+        deleted_at: null,
+        user: { type: 'employee', deleted_at: null },
+      },
+      select: {
+        hours: true,
+        user: {
+          select: {
+            hourly_rate: true,
+          },
+        },
+      },
     });
-    const laborCost = Number(laborCostAgg._sum.earning) || 0;
+    const laborCost = laborCostRows.reduce((sum, row) => {
+      const hours = Number(row.hours) || 0;
+      const rate = Number(row.user?.hourly_rate) || 0;
+      return sum + hours * rate;
+    }, 0);
 
     // Active Projects
     const activeProject = await this.prisma.project.count({
@@ -112,7 +126,8 @@ export class DashboardService {
     const report: { [date: string]: { [status: string]: Set<string> } } = {};
     records.forEach((r) => {
       const dateStr = r.date.toISOString().slice(0, 10);
-      if (!report[dateStr]) report[dateStr] = { PRESENT: new Set(), ABSENT: new Set() };
+      if (!report[dateStr])
+        report[dateStr] = { PRESENT: new Set(), ABSENT: new Set() };
       report[dateStr][r.attendance_status]?.add(r.user_id);
     });
 
@@ -156,14 +171,20 @@ export class DashboardService {
 
     // Determine month/year window (default to current if not provided)
     const now = new Date();
-    const monthNum = month && !isNaN(Number(month)) ? Number(month) : (now.getMonth() + 1);
-    const yearNum = year && !isNaN(Number(year)) ? Number(year) : now.getFullYear();
+    const monthNum =
+      month && !isNaN(Number(month)) ? Number(month) : now.getMonth() + 1;
+    const yearNum =
+      year && !isNaN(Number(year)) ? Number(year) : now.getFullYear();
     const startDate = new Date(yearNum, monthNum - 1, 1);
     const endDate = new Date(yearNum, monthNum + 1, 0, 23, 59, 59, 999);
 
     // Calculate total hours in window
     const agg = await this.prisma.attendance.aggregate({
-      where: { user_id, deleted_at: null, date: { gte: startDate, lte: endDate } },
+      where: {
+        user_id,
+        deleted_at: null,
+        date: { gte: startDate, lte: endDate },
+      },
       _sum: { hours: true },
     });
     const totalHours = Number(agg._sum.hours) || 0;

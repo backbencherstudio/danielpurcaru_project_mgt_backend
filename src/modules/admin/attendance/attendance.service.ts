@@ -2,17 +2,62 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
-import { toUtc, toLisbon } from 'src/common/helper/timezone.helper';
+import { toUtc } from 'src/common/helper/timezone.helper';
 import { Cron } from '@nestjs/schedule';
 import { AttendanceStatus } from './dto/attendance-status.enum';
 
 @Injectable()
 export class AttendanceService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
+
+  private parseDateOnly(value?: string | Date | null): Date | undefined {
+    if (!value) return undefined;
+
+    if (value instanceof Date) {
+      return new Date(
+        Date.UTC(
+          value.getUTCFullYear(),
+          value.getUTCMonth(),
+          value.getUTCDate(),
+        ),
+      );
+    }
+
+    const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+      const year = Number(dateOnlyMatch[1]);
+      const month = Number(dateOnlyMatch[2]) - 1;
+      const day = Number(dateOnlyMatch[3]);
+      return new Date(Date.UTC(year, month, day));
+    }
+
+    const parsed = new Date(value);
+    if (isNaN(parsed.getTime())) return undefined;
+
+    return new Date(
+      Date.UTC(
+        parsed.getUTCFullYear(),
+        parsed.getUTCMonth(),
+        parsed.getUTCDate(),
+      ),
+    );
+  }
+
+  private parseDateTime(value?: string | Date | null): Date | null {
+    if (!value) return null;
+    const parsed = value instanceof Date ? new Date(value) : new Date(value);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private formatDateOnly(value: Date): string {
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(value.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 
   async create(dto: CreateAttendanceDto) {
     try {
-
       // check if project id
       if (!dto.project_id) {
         return { success: false, message: 'Project is required.' };
@@ -39,11 +84,8 @@ export class AttendanceService {
         });
       }
 
-
-
       const status = dto.attendance_status || 'PRESENT';
-      // Treat incoming date/time strings as Europe/Lisbon local time
-      const date = dto.date ? toUtc(dto.date) : undefined;
+      const date = this.parseDateOnly(dto.date);
 
       // Check for existing attendance (either PRESENT or ABSENT)
       const existing = await this.prisma.attendance.findFirst({
@@ -58,15 +100,18 @@ export class AttendanceService {
         if (existing) {
           // If existing is ABSENT, update it to PRESENT
           if (existing.attendance_status === 'ABSENT') {
-            const start_time = toUtc(dto.start_time);
-            const end_time = toUtc(dto.end_time);
-            const lunch_start = toUtc(dto.lunch_start);
-            const lunch_end = toUtc(dto.lunch_end);
+            const start_time = this.parseDateTime(dto.start_time);
+            const end_time = this.parseDateTime(dto.end_time);
+            const lunch_start = this.parseDateTime(dto.lunch_start);
+            const lunch_end = this.parseDateTime(dto.lunch_end);
             let hours = dto.hours;
             if (start_time && end_time) {
-              hours = (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
+              hours =
+                (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
               if (lunch_start && lunch_end) {
-                hours -= (lunch_end.getTime() - lunch_start.getTime()) / (1000 * 60 * 60);
+                hours -=
+                  (lunch_end.getTime() - lunch_start.getTime()) /
+                  (1000 * 60 * 60);
               }
               hours = Math.max(0, hours);
             }
@@ -88,10 +133,18 @@ export class AttendanceService {
             // Update project assignee total hours and cost
             await this.updateProjectAssigneeTotals(dto.project_id, dto.user_id);
 
-            return { success: true, data: updated, message: 'Attendance updated from ABSENT to PRESENT.' };
+            return {
+              success: true,
+              data: updated,
+              message: 'Attendance updated from ABSENT to PRESENT.',
+            };
           }
           // If already PRESENT, prevent duplicate
-          return { success: false, message: 'Attendance already marked as PRESENT for this user and date.' };
+          return {
+            success: false,
+            message:
+              'Attendance already marked as PRESENT for this user and date.',
+          };
         }
         // No existing record, create new PRESENT
         // Only check for duplicate if status is PRESENT (or default)
@@ -99,28 +152,34 @@ export class AttendanceService {
           const exists = await this.prisma.attendance.findFirst({
             where: {
               user_id: dto.user_id,
-              date: toUtc(dto.date),
+              date: this.parseDateOnly(dto.date),
               attendance_status: 'PRESENT',
               deleted_at: null,
             },
           });
           if (exists) {
-            return { success: false, message: 'Attendance already marked as PRESENT for this user and date.' };
+            return {
+              success: false,
+              message:
+                'Attendance already marked as PRESENT for this user and date.',
+            };
           }
         }
 
         // Parse times
-        const start_time = toUtc(dto.start_time);
-        const end_time = toUtc(dto.end_time);
-        const lunch_start = toUtc(dto.lunch_start);
-        const lunch_end = toUtc(dto.lunch_end);
+        const start_time = this.parseDateTime(dto.start_time);
+        const end_time = this.parseDateTime(dto.end_time);
+        const lunch_start = this.parseDateTime(dto.lunch_start);
+        const lunch_end = this.parseDateTime(dto.lunch_end);
 
         // Calculate hours if possible
         let hours = dto.hours;
         if (start_time && end_time) {
-          hours = (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
+          hours =
+            (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
           if (lunch_start && lunch_end) {
-            hours -= (lunch_end.getTime() - lunch_start.getTime()) / (1000 * 60 * 60);
+            hours -=
+              (lunch_end.getTime() - lunch_start.getTime()) / (1000 * 60 * 60);
           }
           hours = Math.max(0, hours);
         }
@@ -129,7 +188,7 @@ export class AttendanceService {
           data: {
             user_id: dto.user_id,
             project_id: dto.project_id,
-            date: toUtc(dto.date),
+            date: this.parseDateOnly(dto.date),
             start_time,
             lunch_start,
             lunch_end,
@@ -153,14 +212,18 @@ export class AttendanceService {
       } else {
         // If status is ABSENT and already exists, do nothing or return
         if (existing && existing.attendance_status === 'ABSENT') {
-          return { success: false, message: 'Attendance already marked as ABSENT for this user and date.' };
+          return {
+            success: false,
+            message:
+              'Attendance already marked as ABSENT for this user and date.',
+          };
         }
         // Otherwise, create new ABSENT record
         const attendance = await this.prisma.attendance.create({
           data: {
             user_id: dto.user_id,
             project_id: dto.project_id,
-            date: toUtc(dto.date),
+            date: this.parseDateOnly(dto.date),
             attendance_status: dto.attendance_status,
             hours: 0,
             notes: dto.notes,
@@ -178,11 +241,25 @@ export class AttendanceService {
     }
   }
 
-  async findGrid({ month, year, search, page = '1', limit = '10' }: { month: string, year: string, search?: string, page?: string, limit?: string }) {
+  async findGrid({
+    month,
+    year,
+    search,
+    page = '1',
+    limit = '10',
+  }: {
+    month: string;
+    year: string;
+    search?: string;
+    page?: string;
+    limit?: string;
+  }) {
     try {
-
       if (!month || !year || isNaN(Number(month)) || isNaN(Number(year))) {
-        return { success: false, message: 'Invalid or missing month/year parameter.' };
+        return {
+          success: false,
+          message: 'Invalid or missing month/year parameter.',
+        };
       }
       const pageNumber = parseInt(page, 10) || 1;
       const pageSize = parseInt(limit, 10) || 10;
@@ -213,11 +290,15 @@ export class AttendanceService {
         },
       });
       // 2. Get all attendance for these users in the given month/year
-      const startDate = new Date(Number(year), Number(month) - 1, 1);
-      const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
+      const startDate = new Date(
+        Date.UTC(Number(year), Number(month) - 1, 1, 0, 0, 0, 0),
+      );
+      const endDate = new Date(
+        Date.UTC(Number(year), Number(month), 0, 23, 59, 59, 999),
+      );
       const attendanceRecords = await this.prisma.attendance.findMany({
         where: {
-          user_id: { in: users.map(u => u.id) },
+          user_id: { in: users.map((u) => u.id) },
           date: { gte: startDate, lte: endDate },
           deleted_at: null,
         },
@@ -232,23 +313,37 @@ export class AttendanceService {
       });
       // 3. Build grid: for each user, map days of month to { id, hours } or null
       const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
-      const grid = users.map(user => {
-        const days: { [key: string]: { id: string, hours: number, attendance_status: AttendanceStatus, project_id: string } | null } = {};
+      const grid = users.map((user) => {
+        const days: {
+          [key: string]: {
+            id: string;
+            hours: number;
+            attendance_status: AttendanceStatus;
+            project_id: string;
+          } | null;
+        } = {};
         for (let d = 1; d <= daysInMonth; d++) {
           const dateStr = `${year}-${month.padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
           days[dateStr] = null;
         }
-        attendanceRecords.filter(a => a.user_id === user.id).forEach(a => {
-          const dateObj = new Date(a.date);
-          // Only include if the date is in the current month and year
-          if (
-            dateObj.getFullYear() === Number(year) &&
-            dateObj.getMonth() === Number(month) - 1
-          ) {
-            const dateStr = dateObj.toISOString().slice(0, 10);
-            days[dateStr] = { id: a.id, hours: Number(a.hours), attendance_status: a.attendance_status as AttendanceStatus, project_id: a.project_id };
-          }
-        });
+        attendanceRecords
+          .filter((a) => a.user_id === user.id)
+          .forEach((a) => {
+            const dateObj = new Date(a.date);
+            // Only include if the date is in the current month and year
+            if (
+              dateObj.getUTCFullYear() === Number(year) &&
+              dateObj.getUTCMonth() === Number(month) - 1
+            ) {
+              const dateStr = this.formatDateOnly(dateObj);
+              days[dateStr] = {
+                id: a.id,
+                hours: Number(a.hours),
+                attendance_status: a.attendance_status as AttendanceStatus,
+                project_id: a.project_id,
+              };
+            }
+          });
         return { user, days };
       });
       return {
@@ -266,16 +361,40 @@ export class AttendanceService {
     }
   }
 
-  async getEmployeeAttendance({ user_id, month, year }: { user_id: string, month: string, year: string }) {
+  async getEmployeeAttendance({
+    user_id,
+    month,
+    year,
+  }: {
+    user_id: string;
+    month: string;
+    year: string;
+  }) {
     try {
-      if (!user_id || !month || !year || isNaN(Number(month)) || isNaN(Number(year))) {
-        return { success: false, message: 'Invalid or missing user_id/month/year parameter.' };
+      if (
+        !user_id ||
+        !month ||
+        !year ||
+        isNaN(Number(month)) ||
+        isNaN(Number(year))
+      ) {
+        return {
+          success: false,
+          message: 'Invalid or missing user_id/month/year parameter.',
+        };
       }
       const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
-      const startDate = new Date(Number(year), Number(month) - 1, 1);
-      const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
+      const startDate = new Date(
+        Date.UTC(Number(year), Number(month) - 1, 1, 0, 0, 0, 0),
+      );
+      const endDate = new Date(
+        Date.UTC(Number(year), Number(month), 0, 23, 59, 59, 999),
+      );
       // Get user hourly rate
-      const user = await this.prisma.user.findUnique({ where: { id: user_id }, select: { hourly_rate: true } });
+      const user = await this.prisma.user.findUnique({
+        where: { id: user_id },
+        select: { hourly_rate: true },
+      });
       const hourlyRate = user?.hourly_rate ? Number(user.hourly_rate) : 0;
       // Get all attendance records for this user in the month
       const records = await this.prisma.attendance.findMany({
@@ -296,8 +415,8 @@ export class AttendanceService {
       });
       // Map date string (YYYY-MM-DD) to record
       const recordMap: { [date: string]: any } = {};
-      records.forEach(r => {
-        const dateStr = r.date.toISOString().slice(0, 10);
+      records.forEach((r) => {
+        const dateStr = this.formatDateOnly(r.date);
         recordMap[dateStr] = r;
       });
       // Build result for each day
@@ -310,9 +429,16 @@ export class AttendanceService {
         result.push({
           id: rec?.id || null,
           date: dateStr, // <-- always output as YYYY-MM-DD
-          start_time: rec?.start_time ? rec.start_time.toISOString().slice(11, 16) : '----',
-          lunch: rec?.lunch_start && rec?.lunch_end ? `${rec.lunch_start.toISOString().slice(11, 13)}-${rec.lunch_end.toISOString().slice(11, 13)}` : '----',
-          end_time: rec?.end_time ? rec.end_time.toISOString().slice(11, 16) : '----',
+          start_time: rec?.start_time
+            ? rec.start_time.toISOString().slice(11, 16)
+            : '----',
+          lunch:
+            rec?.lunch_start && rec?.lunch_end
+              ? `${rec.lunch_start.toISOString().slice(11, 13)}-${rec.lunch_end.toISOString().slice(11, 13)}`
+              : '----',
+          end_time: rec?.end_time
+            ? rec.end_time.toISOString().slice(11, 16)
+            : '----',
           total: rec?.hours ? `${hours.toFixed(1)} hrs` : 'No Record',
           earning: hours ? `${earning.toFixed(2)}` : '0.00',
         });
@@ -340,12 +466,10 @@ export class AttendanceService {
       if (user_id) where.user_id = user_id;
       if (attendance_status) where.attendance_status = attendance_status;
       if (date) {
-        where.date = toUtc(date);
+        where.date = this.parseDateOnly(date);
       }
       if (search) {
-        where.OR = [
-          { notes: { contains: search, mode: 'insensitive' } },
-        ];
+        where.OR = [{ notes: { contains: search, mode: 'insensitive' } }];
       }
       const total = await this.prisma.attendance.count({ where });
       const data = await this.prisma.attendance.findMany({
@@ -407,14 +531,18 @@ export class AttendanceService {
       // Get the existing attendance record to get project_id and user_id
       const existingAttendance = await this.prisma.attendance.findUnique({
         where: { id },
-        select: { project_id: true, user_id: true }
+        select: { project_id: true, user_id: true },
       });
 
       // If attendance record doesn't exist, create a new one
       if (!existingAttendance) {
         // Validate required fields for creation
         if (!dto.user_id || !dto.project_id || !dto.date) {
-          return { success: false, message: 'user_id, project_id, and date are required to create new attendance record' };
+          return {
+            success: false,
+            message:
+              'user_id, project_id, and date are required to create new attendance record',
+          };
         }
 
         // Check if user is assigned to project
@@ -430,13 +558,16 @@ export class AttendanceService {
         const existingRecord = await this.prisma.attendance.findFirst({
           where: {
             user_id: dto.user_id,
-            date: new Date(dto.date),
+            date: this.parseDateOnly(dto.date),
             deleted_at: null,
           },
         });
 
         if (existingRecord) {
-          return { success: false, message: 'Attendance record already exists for this user and date.' };
+          return {
+            success: false,
+            message: 'Attendance record already exists for this user and date.',
+          };
         }
 
         // Set attendance status based on hours
@@ -450,17 +581,23 @@ export class AttendanceService {
         const isPresent = attendance_status === AttendanceStatus.PRESENT;
 
         // Parse times only when present
-        const start_time = isPresent ? toUtc(dto.start_time) : null;
-        const end_time = isPresent ? toUtc(dto.end_time) : null;
-        const lunch_start = isPresent ? toUtc(dto.lunch_start) : null;
-        const lunch_end = isPresent ? toUtc(dto.lunch_end) : null;
+        const start_time = isPresent
+          ? this.parseDateTime(dto.start_time)
+          : null;
+        const end_time = isPresent ? this.parseDateTime(dto.end_time) : null;
+        const lunch_start = isPresent
+          ? this.parseDateTime(dto.lunch_start)
+          : null;
+        const lunch_end = isPresent ? this.parseDateTime(dto.lunch_end) : null;
 
         // Calculate hours if possible
         let hours = dto.hours || 0;
         if (isPresent && start_time && end_time) {
-          hours = (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
+          hours =
+            (end_time.getTime() - start_time.getTime()) / (1000 * 60 * 60);
           if (lunch_start && lunch_end) {
-            hours -= (lunch_end.getTime() - lunch_start.getTime()) / (1000 * 60 * 60);
+            hours -=
+              (lunch_end.getTime() - lunch_start.getTime()) / (1000 * 60 * 60);
           }
           hours = Math.max(0, hours);
         } else if (!isPresent) {
@@ -471,7 +608,7 @@ export class AttendanceService {
           data: {
             user_id: dto.user_id,
             project_id: dto.project_id,
-            date: toUtc(dto.date),
+            date: this.parseDateOnly(dto.date),
             start_time,
             lunch_start,
             lunch_end,
@@ -497,12 +634,19 @@ export class AttendanceService {
         // Update project assignee total hours and cost
         await this.updateProjectAssigneeTotals(dto.project_id, dto.user_id);
 
-        return { success: true, data, message: 'New attendance record created' };
+        return {
+          success: true,
+          data,
+          message: 'New attendance record created',
+        };
       }
       // If record exists, proceed with update
       // check if user is assigned to project
       const user = await this.prisma.projectAssignee.findFirst({
-        where: { projectId: dto.project_id, userId: existingAttendance.user_id },
+        where: {
+          projectId: dto.project_id,
+          userId: existingAttendance.user_id,
+        },
       });
 
       if (!user) {
@@ -518,16 +662,18 @@ export class AttendanceService {
       }
 
       const isPresent = dto.attendance_status === AttendanceStatus.PRESENT;
-      const start_time = isPresent ? toUtc(dto.start_time) : null;
-      const lunch_start = isPresent ? toUtc(dto.lunch_start) : null;
-      const lunch_end = isPresent ? toUtc(dto.lunch_end) : null;
-      const end_time = isPresent ? toUtc(dto.end_time) : null;
+      const start_time = isPresent ? this.parseDateTime(dto.start_time) : null;
+      const lunch_start = isPresent
+        ? this.parseDateTime(dto.lunch_start)
+        : null;
+      const lunch_end = isPresent ? this.parseDateTime(dto.lunch_end) : null;
+      const end_time = isPresent ? this.parseDateTime(dto.end_time) : null;
 
       const data = await this.prisma.attendance.update({
         where: { id },
         data: {
           ...dto,
-          date: toUtc(dto.date),
+          date: this.parseDateOnly(dto.date),
           start_time,
           lunch_start,
           lunch_end,
@@ -547,16 +693,26 @@ export class AttendanceService {
       });
 
       // Check if project_id changed
-      const projectIdChanged = dto.project_id && dto.project_id !== existingAttendance.project_id;
+      const projectIdChanged =
+        dto.project_id && dto.project_id !== existingAttendance.project_id;
 
       if (projectIdChanged) {
         // Update old project totals (hours will be removed automatically since project_id changed)
-        await this.updateProjectAssigneeTotals(existingAttendance.project_id, existingAttendance.user_id);
+        await this.updateProjectAssigneeTotals(
+          existingAttendance.project_id,
+          existingAttendance.user_id,
+        );
         // Update new project totals (hours will be added automatically)
-        await this.updateProjectAssigneeTotals(dto.project_id, existingAttendance.user_id);
+        await this.updateProjectAssigneeTotals(
+          dto.project_id,
+          existingAttendance.user_id,
+        );
       } else {
         // Project didn't change, just update the current project totals
-        await this.updateProjectAssigneeTotals(data.project_id, existingAttendance.user_id);
+        await this.updateProjectAssigneeTotals(
+          data.project_id,
+          existingAttendance.user_id,
+        );
       }
 
       return { success: true, data, message: 'Attendance record updated' };
@@ -570,7 +726,7 @@ export class AttendanceService {
       // Get the attendance record before deleting to get project_id and user_id
       const attendance = await this.prisma.attendance.findUnique({
         where: { id },
-        select: { project_id: true, user_id: true }
+        select: { project_id: true, user_id: true },
       });
 
       if (!attendance) {
@@ -580,7 +736,10 @@ export class AttendanceService {
       const data = await this.prisma.attendance.delete({ where: { id } });
 
       // Update project assignee total hours and cost after deletion
-      await this.updateProjectAssigneeTotals(attendance.project_id, attendance.user_id);
+      await this.updateProjectAssigneeTotals(
+        attendance.project_id,
+        attendance.user_id,
+      );
 
       return { success: true, data };
     } catch (error) {
@@ -610,12 +769,14 @@ export class AttendanceService {
         },
         select: { date: true },
       });
-      const attendedDays = new Set(records.map(r => r.date.toISOString().slice(0, 10)));
+      const attendedDays = new Set(
+        records.map((r) => this.formatDateOnly(r.date)),
+      );
 
       // For each day in the month, if not attended, create ABSENT
       for (let d = 1; d <= daysInMonth; d++) {
         const dateObj = new Date(year, month - 1, d);
-        const dateStr = dateObj.toISOString().slice(0, 10);
+        const dateStr = this.formatDateOnly(dateObj);
         if (!attendedDays.has(dateStr)) {
           await this.prisma.attendance.create({
             data: {
@@ -631,9 +792,13 @@ export class AttendanceService {
     return { success: true, message: 'Absent days filled for all employees.' };
   }
 
-  async fillAbsentDaysForUserMonth(user_id: string, month: number, year: number, project_id: string) {
+  async fillAbsentDaysForUserMonth(
+    user_id: string,
+    month: number,
+    year: number,
+    project_id: string,
+  ) {
     const daysInMonth = new Date(year, month, 0).getDate();
-    const timeZone = 'Europe/Lisbon';
 
     // 1. Get all OFF_DAY and HOLIDAY dates from academic calendar
     const calendarEvents = await this.prisma.academicCalendar.findMany({
@@ -648,7 +813,7 @@ export class AttendanceService {
       select: { start_date: true },
     });
     const skipDates = new Set(
-      calendarEvents.map(ev => toLisbon(ev.start_date).toISOString().slice(0, 10))
+      calendarEvents.map((ev) => this.formatDateOnly(ev.start_date)),
     );
 
     // 2. Get all attendance dates for this user in the month
@@ -663,13 +828,14 @@ export class AttendanceService {
       },
       select: { date: true },
     });
-    const attendedDays = new Set(records.map(r => r.date.toISOString().slice(0, 10)));
+    const attendedDays = new Set(
+      records.map((r) => this.formatDateOnly(r.date)),
+    );
 
     // 3. For each day, skip if Sunday or in skipDates, else create ABSENT if missing
     for (let d = 1; d <= daysInMonth; d++) {
-      const utcDate = new Date(Date.UTC(year, month - 1, d));
-      const dateObj = toLisbon(utcDate);
-      const dateStr = dateObj.toISOString().slice(0, 10);
+      const dateObj = new Date(Date.UTC(year, month - 1, d));
+      const dateStr = this.formatDateOnly(dateObj);
 
       // Skip if Sunday or in academic calendar OFF_DAY/HOLIDAY
       if (dateObj.getDay() === 0 || skipDates.has(dateStr)) continue;
@@ -694,7 +860,13 @@ export class AttendanceService {
    * @param dateStr - Date string in YYYY-MM-DD format
    */
   async checkAndFillDailyAbsence(dateStr: string) {
-    const date = new Date(dateStr);
+    const date = this.parseDateOnly(dateStr);
+    if (!date) {
+      return {
+        success: false,
+        message: 'Invalid date format. Use YYYY-MM-DD.',
+      };
+    }
     // 1. Get all active employees
     const employees = await this.prisma.user.findMany({
       where: { type: 'employee', deleted_at: null },
@@ -708,7 +880,7 @@ export class AttendanceService {
       },
       select: { user_id: true },
     });
-    const attendedUserIds = new Set(attendanceRecords.map(r => r.user_id));
+    const attendedUserIds = new Set(attendanceRecords.map((r) => r.user_id));
     // 3. For each employee, if no attendance, create ABSENT
     for (const emp of employees) {
       if (!attendedUserIds.has(emp.id)) {
@@ -722,15 +894,17 @@ export class AttendanceService {
         });
       }
     }
-    return { success: true, message: 'All absences filled for date: ' + dateStr };
+    return {
+      success: true,
+      message: 'All absences filled for date: ' + dateStr,
+    };
   }
 
   //?@Cron('0 17 * * *') // 5pm
-  @Cron('0 10 * * *')  // 10 am
+  @Cron('0 10 * * *') // 10 am
   async autoFillDailyAbsence() {
     const today = new Date();
-    // Format as YYYY-MM-DD
-    const dateStr = today.toISOString().slice(0, 10);
+    const dateStr = this.formatDateOnly(today);
     await this.checkAndFillDailyAbsence(dateStr);
     // Optionally log or handle result
   }
@@ -745,7 +919,7 @@ export class AttendanceService {
       // Get user's hourly rate
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { hourly_rate: true }
+        select: { hourly_rate: true },
       });
 
       const hourlyRate = user?.hourly_rate ? Number(user.hourly_rate) : 0;
@@ -755,9 +929,9 @@ export class AttendanceService {
         where: {
           user_id: userId,
           project_id: projectId,
-          deleted_at: null
+          deleted_at: null,
         },
-        _sum: { hours: true }
+        _sum: { hours: true },
       });
 
       const totalHours = Number(attendanceAgg._sum.hours) || 0;
@@ -767,17 +941,16 @@ export class AttendanceService {
       await this.prisma.projectAssignee.updateMany({
         where: {
           projectId,
-          userId
+          userId,
         },
         data: {
           total_hours: totalHours,
-          total_cost: totalCost
-        }
+          total_cost: totalCost,
+        },
       });
     } catch (error) {
       console.error('Error updating project assignee totals:', error);
       // Don't throw error to avoid breaking attendance creation
     }
   }
-
 }
