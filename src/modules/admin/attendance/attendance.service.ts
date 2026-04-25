@@ -58,10 +58,7 @@ export class AttendanceService {
 
   async create(dto: CreateAttendanceDto) {
     try {
-      console.log(
-        'attendencee dto ======================>>>>>>>>>>>>>>>>>>>',
-        dto,
-      );
+   
       // check if project id
       if (!dto.project_id) {
         return { success: false, message: 'Project is required.' };
@@ -134,11 +131,6 @@ export class AttendanceService {
               },
             });
 
-            console.log(
-              'attendence create data ========================>>>>>>>>>>>>>>',
-              updated,
-            );
-
             // Update project assignee total hours and cost
             await this.updateProjectAssigneeTotals(dto.project_id, dto.user_id);
 
@@ -208,11 +200,6 @@ export class AttendanceService {
             address: dto.address,
           },
         });
-
-        console.log(
-          'attendence create data ========================>>>>>>>>>>>>>>',
-          attendance,
-        );
 
         // Update project assignee total hours and cost
         await this.updateProjectAssigneeTotals(dto.project_id, dto.user_id);
